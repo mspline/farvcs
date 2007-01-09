@@ -1,0 +1,14 @@
+EXPORTS
+	GetPluginInfo=_GetPluginInfo@4
+	OpenPlugin=_OpenPlugin@8
+	SetStartupInfo=_SetStartupInfo@4
+	GetMinFarVersion=_GetMinFarVersion@0
+	GetOpenPluginInfo=_GetOpenPluginInfo@8
+	Configure=_Configure@4
+	ExitFAR=_ExitFAR@0
+	ClosePlugin=_ClosePlugin@4
+	GetFindData=_GetFindData@16
+	FreeFindData=_FreeFindData@12
+	SetDirectory=_SetDirectory@12
+	ProcessKey=_ProcessKey@12
+	ProcessEvent=_ProcessEvent@12
