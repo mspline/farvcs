@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
-	Name="farcvs"
+	Name="farvcs"
 	ProjectGUID="{B83475C0-ECE0-41E3-B0FA-7166EDF65BEE}"
 	Keyword="Win32Proj"
 	>
@@ -39,7 +39,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;FARCVS_EXPORTS;_CRT_SECURE_NO_DEPRECATE"
+				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;FARVCS_EXPORTS;_CRT_SECURE_NO_DEPRECATE"
 				MinimalRebuild="false"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
@@ -112,7 +112,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;FARCVS_EXPORTS;_CRT_SECURE_NO_DEPRECATE"
+				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;FARVCS_EXPORTS;_CRT_SECURE_NO_DEPRECATE"
 				RuntimeLibrary="2"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
@@ -214,7 +214,7 @@
 			UniqueIdentifier="{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}"
 			>
 			<File
-				RelativePath=".\farcvs.rc"
+				RelativePath=".\farvcs.rc"
 				>
 			</File>
 		</Filter>
@@ -228,11 +228,11 @@
 				>
 			</File>
 			<File
-				RelativePath=".\farcvs.cpp"
+				RelativePath=".\farvcs.cpp"
 				>
 			</File>
 			<File
-				RelativePath=".\farcvs.def"
+				RelativePath=".\farvcs.def"
 				>
 			</File>
 			<File

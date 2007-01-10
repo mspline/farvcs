@@ -3,7 +3,7 @@
 
 /*****************************************************************************
  File name:  miscutil.h
- Project:    FarCvs plugin
+ Project:    FarVCS plugin
  Purpose:    General-purpose utilities
  Compiler:   MS Visual C++ 8.0
  Authors:    Michael Steinhause

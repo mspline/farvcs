@@ -1,6 +1,6 @@
 /*****************************************************************************
- File name:  farcvs.cpp
- Project:    FarCvs plugin
+ File name:  farvcs.cpp
+ Project:    FarVCS plugin
  Purpose:    The main source file
  Compiler:   MS Visual C++ 8.0
  Authors:    Michael Steinhause
@@ -40,8 +40,8 @@ FarStandardFunctions FSF;
 HINSTANCE hInstance;           // The DLL module handle
 
 char cszPluginName[] = "CVS Assistant";
-char cszDllName[]    = "farcvs.dll";
-char cszCacheFile[]  = "farcvs.csh";
+char cszDllName[]    = "farvcs.dll";
+char cszCacheFile[]  = "farvcs.csh";
 
 char *PluginMenuStrings[] = { cszPluginName };
 
@@ -591,7 +591,7 @@ private:
 CvsPlugin::PluginSettings Settings;
 CvsPlugin::Cache          Cache;
 
-const char * const CvsPlugin::PluginSettings::cszSettingsKey = "HKEY_CURRENT_USER\\Software\\FAR\\Plugins\\FarCvs";
+const char * const CvsPlugin::PluginSettings::cszSettingsKey = "HKEY_CURRENT_USER\\Software\\FAR\\Plugins\\FarVCS";
 
 void CvsPlugin::PluginSettings::Load()
 {

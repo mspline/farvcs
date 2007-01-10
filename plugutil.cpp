@@ -1,7 +1,7 @@
 /*****************************************************************************
  File name:  plugutil.cpp
- Project:    FarCvs plugin
- Purpose:    Plugin utilities not specific to FarCvs plugin
+ Project:    FarVCS plugin
+ Purpose:    Far plugin utilities not specific to FarVCS plugin
  Compiler:   MS Visual C++ 8.0
  Authors:    Michael Steinhause
  Dependencies: STL
@@ -131,7 +131,7 @@ const char *GetMsg( int nMsgId )
 //==========================================================================>>
 // Returns the hotkey assigned to the plugin with the given dll name or 0 if
 // no hotkeys defined. The dll name must be specified in lower case,
-// e.g. "farcvs.dll".
+// e.g. "farvcs.dll".
 //==========================================================================>>
 
 unsigned char GetPluginHotkey( const char *szDllName )

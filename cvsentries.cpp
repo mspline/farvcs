@@ -1,9 +1,9 @@
 /*****************************************************************************
  File name:  cvsentries.cpp
- Project:    FarCvs plugin
+ Project:    FarVCS plugin
  Purpose:    Handling of the contents of the CVS administrative directory
  Compiler:   MS Visual C++ 8.0
- Authors:    Michael Steinhause
+ Authors:    Michael Steinhaus
  Dependencies: STL
 *****************************************************************************/
 

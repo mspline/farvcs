@@ -3,7 +3,7 @@
 
 /*****************************************************************************
  File name:  regwrap.h
- Project:    FarCvs plugin
+ Project:    FarVCS plugin
  Purpose:    Simple wrapper class for registry access
  Compiler:   MS Visual C++ 8.0
  Authors:    Michael Steinhaus
