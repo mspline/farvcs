@@ -1060,9 +1060,14 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
     if ( pi.PanelType != PTYPE_FILEPANEL || !pi.Plugin || pi.ItemsNumber == 0 )
         return FALSE;
 
+    bool bCtrl      =  (ControlState & PKF_CONTROL) && ~(ControlState & PKF_ALT) && ~(ControlState & PKF_SHIFT);
+    bool bCtrlAlt   =  (ControlState & PKF_CONTROL) &&  (ControlState & PKF_ALT) && ~(ControlState & PKF_SHIFT);
+    bool bCtrlShift =  (ControlState & PKF_CONTROL) && ~(ControlState & PKF_ALT) &&  (ControlState & PKF_SHIFT);
+    bool bAltShift  = ~(ControlState & PKF_CONTROL) &&  (ControlState & PKF_ALT) &&  (ControlState & PKF_SHIFT);
+
     const char *szCurFile = pi.PanelItems[pi.CurrentItem].FindData.cFileName;
 
-    if ( (ControlState & PKF_CONTROL) && Key == VK_RETURN  ) // Ctrl+Enter
+    if ( bCtrl && Key == VK_RETURN  ) // Ctrl+Enter
     {
         // Get the current file
 
@@ -1075,7 +1080,7 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
                              (void*)(QuoteIfNecessary(ExtractFileName(szCurFile))+' ').c_str() );
         return TRUE;
     }
-    else if ( (ControlState & PKF_CONTROL) && Key == VK_INSERT ) // Ctrl+Insert
+    else if ( bCtrl && Key == VK_INSERT ) // Ctrl+Insert
     {
         // Pass through to FAR if the command line is not empty
 
@@ -1115,13 +1120,13 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
 
         return FSF.CopyToClipboard( sClipboard.c_str() );
     }
-    else if ( (ControlState & PKF_CONTROL) && Key == 'R' ) // Ctrl+R
+    else if ( bCtrl && Key == 'R' ) // Ctrl+R
     {
         Traversal( this ).Execute();
         ::Cache.Save();
         return FALSE;
     }
-    else if ( (ControlState & PKF_ALT) && (ControlState & PKF_SHIFT) && Key == VK_F11 ) // Alt+Shift+F11
+    else if ( bAltShift && Key == VK_F11 ) // Alt+Shift+F11
     {
         ::Settings.bAutomaticMode = !Settings.bAutomaticMode;
         ApplyAutomaticModeFromSettings();
@@ -1130,12 +1135,12 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
 
         return TRUE;
     }
-    else if ( (ControlState & PKF_ALT) && (ControlState & PKF_SHIFT) && Key == VK_F10 ) // Alt+Shift+F10
+    else if ( bAltShift && Key == VK_F10 ) // Alt+Shift+F10
     {
         StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_CLOSEPLUGIN, szCurDir );
         return TRUE;
     }
-    else if ( (ControlState & PKF_ALT) && (ControlState & PKF_SHIFT) && (Key == VK_F3 || Key == VK_F4) ) // Alt+Shift+F3 or Alt+Shift+F4
+    else if ( bAltShift && (Key == VK_F3 || Key == VK_F4) ) // Alt+Shift+F3 or Alt+Shift+F4
     {
         struct CvsAnnotateProcessor
         {
@@ -1181,7 +1186,7 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
                                 1, 1 );
         return TRUE;
     }
-    else if ( ((ControlState & PKF_ALT) || (ControlState & PKF_CONTROL)) && (ControlState & PKF_SHIFT) && (Key == VK_F5 || Key == VK_F6) ) // Alt/Ctrl+Shift+F5/F6
+    else if ( (bCtrlAlt || bCtrlShift) && (Key == VK_F5 || Key == VK_F6) ) // Alt/Ctrl + Shift + F5/F6
     {
         struct CvsUpProcessor
         {
@@ -1207,7 +1212,7 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
             bool bReal_;
         };
 
-        bool bLocal = (ControlState & PKF_ALT) != 0;
+        bool bLocal = bCtrlAlt;
         bool bReal  = Key == VK_F6;
 
         if ( bLocal )
@@ -1232,12 +1237,12 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
 
         return TRUE;
     }
-    else if ( (ControlState & PKF_CONTROL) && (ControlState & PKF_ALT) && Key == VK_F9 ) // Ctrl+Alt+F9
+    else if ( bCtrlAlt && Key == VK_F9 ) // Ctrl+Alt+F9
     {
         ::Cache.Save();
         return TRUE;
     }
-    else if ( (ControlState & PKF_CONTROL) && (ControlState & PKF_SHIFT) && Key == VK_F9 ) // Ctrl+Shift+F9
+    else if ( bCtrlShift && Key == VK_F9 ) // Ctrl+Shift+F9
     {
         ::Cache.Load();
 
