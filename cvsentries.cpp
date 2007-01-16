@@ -105,6 +105,8 @@ void CvsData::FillStatuses() const
 
         assert( entry.status == fsGhost );
 
+        entry.fileFindData = *p;
+
         entry.status = strcmp( entry.sRevision.c_str(), "0" ) == 0            ? fsAdded    :
                        entry.sRevision.c_str()[0] == '-'                      ? fsRemoved  :
                        entry.sTimestamp.find_first_of( "+" ) != string::npos  ? fsConflict :
