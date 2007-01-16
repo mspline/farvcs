@@ -11,6 +11,7 @@
 #include <fstream>
 #include <time.h>
 #include "cvsentries.h"
+#include "svn.h"
 
 using namespace std;
 
@@ -18,13 +19,13 @@ using namespace std;
 // Reads 'Entries' or 'Entries.Log' file
 //==========================================================================>>
 
-bool CvsData::ReadEntriesFile( const string& sDir, bool bEntriesLog, CvsEntries& cvsEntries )
+bool CvsData::ReadEntriesFile( bool bEntriesLog ) const
 {
     // Construct the file name
 
     const char *szEntriesFile = bEntriesLog ? "CVS\\Entries.Log" : "CVS\\Entries";
 
-    ifstream fEntries( CatPath(sDir.c_str(),szEntriesFile).c_str() );
+    ifstream fEntries( CatPath(m_sDir.c_str(),szEntriesFile).c_str() );
 
     if ( !fEntries )
         return false;
@@ -63,7 +64,7 @@ bool CvsData::ReadEntriesFile( const string& sDir, bool bEntriesLog, CvsEntries&
             ++pStartPos;
         }
 
-        if ( pStartPos[0] != '/' )
+        if ( pStartPos[0] != '/' ) // Unrecognized format
             continue;
 
         vector<string> vFields = SplitString( pStartPos+1, '/' );
@@ -71,12 +72,65 @@ bool CvsData::ReadEntriesFile( const string& sDir, bool bEntriesLog, CvsEntries&
             continue;
 
         if ( !bRemoveEntry )
-            cvsEntries.insert( make_pair( vFields[0], CvsEntry( bDir, vFields ) ) );
+            m_Entries.insert( make_pair( vFields[0], VcsEntry( bDir, vFields, fsGhost ) ) );
         else
-            cvsEntries.erase( vFields[0] );
+            m_Entries.erase( vFields[0] );
     }
 
     return true;
+}
+
+//==========================================================================>>
+// Fill in the file statuses
+//==========================================================================>>
+
+void CvsData::FillStatuses() const
+{
+    bool bDirtyFilesExist = false;
+
+    for ( dir_iterator p(m_sDir,true); p != dir_iterator(); ++p )
+    {
+        VcsEntries::iterator pEntry = m_Entries.find( p->cFileName );
+        
+        if ( pEntry == m_Entries.end() )
+        {
+            if ( strcmp( p->cFileName, "." ) != 0 )
+                m_Entries.insert( make_pair( p->cFileName, VcsEntry( p->cFileName, *p ) ) );
+            
+            continue;
+        }
+
+        VcsEntry& entry = pEntry->second;
+        string sFullPathName = CatPath( m_sDir.c_str(), p->cFileName );
+
+        assert( entry.status == fsGhost );
+
+        entry.status = strcmp( entry.sRevision.c_str(), "0" ) == 0            ? fsAdded    :
+                       entry.sRevision.c_str()[0] == '-'                      ? fsRemoved  :
+                       entry.sTimestamp.find_first_of( "+" ) != string::npos  ? fsConflict :
+                       IsFileModified( p->ftLastWriteTime, entry.sTimestamp ) ? fsModified :
+                       OutdatedFiles.ContainsEntry( sFullPathName )           ? fsOutdated :
+                                                                                fsNormal;
+        bDirtyFilesExist |= IsFileDirty( entry.status );
+    }
+
+    // Add as "added in repository" the files/directories that are in outdated files but not existing locally
+    // and not mentioned by CVS
+
+    for ( TSFileSet::iterator p = OutdatedFiles.begin(); p != OutdatedFiles.end(); ++p )
+    {
+        string sFileName = ExtractFileName( *p );
+
+        if ( IsFileFromDir()(*p,m_sDir.c_str()) && m_Entries.find(sFileName) == m_Entries.end() )
+            m_Entries.insert( make_pair( sFileName, VcsEntry(false,sFileName,"","","",m_sTag,fsAddedRepo) ) );
+    }
+
+    // Add/remove the current directory in the list of the directories containing dirty files
+
+    if ( bDirtyFilesExist )
+        DirtyDirs.Add( m_sDir.c_str() );
+    else
+        DirtyDirs.Remove( m_sDir.c_str() );
 }
 
 //==========================================================================>>
@@ -156,39 +210,6 @@ bool IsFileModified( const FILETIME &ftLastWriteTime, string sCvsTimestamp )
 }
 
 //==========================================================================>>
-// Gets the CVS file status
-//==========================================================================>>
-
-CvsFileStatus GetFileStatus( const WIN32_FIND_DATA& findData, const CvsData& cvsData, const char *szCurDir, const CvsEntry **ppCvsEntry )
-{
-    // If the filename is without path, we assume the structure is supplied by GetFirstFile/GetNextFile
-    // and don't check the existence of the file. Kind of premature optimization.
-
-    bool bFullPathName = strchr( findData.cFileName, '\\' ) != 0 || strchr( findData.cFileName, '/' ) != 0;
-    bool bFileExists = bFullPathName ? ::GetFileAttributes( findData.cFileName ) != INVALID_FILE_ATTRIBUTES : true;
-
-    // Check whether CVS is aware of this file
-
-    CvsData::CvsEntries::const_iterator p = cvsData.Entries().find( bFullPathName ? ExtractFileName(findData.cFileName).c_str() : findData.cFileName );
-    const CvsEntry *pCvsEntry = p != cvsData.Entries().end() ? &p->second : 0;
-
-    if ( ppCvsEntry )
-        *ppCvsEntry = pCvsEntry;
-
-    string sFullPathName = bFullPathName ? findData.cFileName : CatPath( szCurDir,findData.cFileName );
-
-    return !bFileExists && !pCvsEntry                                        ? fsBogus    :
-           !bFileExists && pCvsEntry                                         ? fsGhost    :
-           !pCvsEntry                                                        ? fsNonCvs   :
-           strcmp( pCvsEntry->sRevision.c_str(), "0" ) == 0                  ? fsAdded    :
-           pCvsEntry->sRevision.c_str()[0] == '-'                            ? fsRemoved  :
-           pCvsEntry->sTimestamp.find_first_of( "+" ) != string::npos        ? fsConflict :
-           IsFileModified( findData.ftLastWriteTime, pCvsEntry->sTimestamp ) ? fsModified :
-           OutdatedFiles.ContainsEntry( sFullPathName )                      ? fsOutdated :
-                                                                               fsNormal;
-}
-
-//==========================================================================>>
 // Count the number of CVS directories down to a given level. Level 0 means
 // only the directory itself (returns 0 or 1)
 //==========================================================================>>
@@ -206,4 +227,15 @@ int CountCvsDirs( const string& sCurDir, int nDownToLevel )
                 s += CountCvsDirs( CatPath(sCurDir.c_str(),p->cFileName), nDownToLevel-1 );
 
     return s;
+}
+
+auto_ptr<VcsData> GetVcsData( const string& sDir )
+{
+    auto_ptr<VcsData> apVcsData = auto_ptr<VcsData>( new CvsData( sDir ) );
+    
+    if ( apVcsData->IsValid() )
+        return apVcsData;
+
+    apVcsData = auto_ptr<VcsData>( new SvnData( sDir ) );
+    return apVcsData;
 }

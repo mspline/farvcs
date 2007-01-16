@@ -71,6 +71,34 @@ void SafeSleep( DWORD dwMilliseconds );
 std::string CatPath( const char *szDir, const char *szSubDir );
 std::string ExtractFileName( const std::string& sPathName );
 
+inline std::string u2s( unsigned int u )
+{
+    char buf[256];
+    array_sprintf( buf, "%u", u );
+    return buf;
+}
+
+inline std::string i2s( int i )
+{
+    char buf[256];
+    array_sprintf( buf, "%d", i );
+    return buf;
+}
+
+inline std::string l2s( long l )
+{
+    char buf[256];
+    array_sprintf( buf, "%ld", l );
+    return buf;
+}
+
+inline std::string ul2s( unsigned long ul )
+{
+    char buf[256];
+    array_sprintf( buf, "%lu", ul );
+    return buf;
+}
+
 //==========================================================================>>
 // String comparison functors
 //==========================================================================>>

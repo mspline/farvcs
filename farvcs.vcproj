@@ -207,6 +207,10 @@
 				RelativePath=".\resource.h"
 				>
 			</File>
+			<File
+				RelativePath=".\svn.h"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Resource Files"
@@ -245,6 +249,10 @@
 			</File>
 			<File
 				RelativePath=".\regwrap.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\svn.cpp"
 				>
 			</File>
 		</Filter>

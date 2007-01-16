@@ -220,7 +220,7 @@ private:
 
     enum { nOptColumnWidth = 5, nRevColumnWidth = 11 }; // Revision column width
 
-    void DecoratePanelItem( PluginPanelItem& pi, const CvsEntry *pCvsEntry, const char *szTag, CvsFileStatus fs );
+    void DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, const string& sTag );
 
     // Theading for automatic mode
 
@@ -392,9 +392,9 @@ private:
         {
             // Read the CVS data (does nothing if not in a CVS-controlled directory)
 
-            CvsData cvsData( sDir );
+            auto_ptr<VcsData> apVcsData = GetVcsData( sDir );
 
-            if ( !cvsData.IsValid() )
+            if ( !apVcsData->IsValid() )
                 return true;
 
             // Enumerate all the entries in the current directory
@@ -404,7 +404,7 @@ private:
 
             for ( dir_iterator p(sDir); p != dir_iterator(); ++p )
             {
-                bDirtyFilesExist |= IsFileDirty( *p, cvsData, sDir.c_str() );
+                bDirtyFilesExist |= IsFileDirty( *p, *apVcsData );
 
                 string sPathName = CatPath( sDir.c_str(), p->cFileName );
 
@@ -768,9 +768,9 @@ void CvsPlugin::GetOpenPluginInfo( OpenPluginInfo *pInfo )
     pInfo->CurDir = szCurDir;
     pInfo->Format = 0;
 
-    CvsData cvsData( szCurDir );
+    auto_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
     
-    array_sprintf( szPanelTitle, " [%s] %s ", cvsData.m_sTag.empty() ? "CVS" : cvsData.m_sTag.c_str(), szCurDir );
+    array_sprintf( szPanelTitle, " [%s] %s ", apVcsData->getTag().empty() ? "CVS" : apVcsData->getTag().c_str(), szCurDir );
     pInfo->PanelTitle = szPanelTitle;
 
     pInfo->InfoLines = 0;
@@ -792,7 +792,7 @@ void CvsPlugin::GetOpenPluginInfo( OpenPluginInfo *pInfo )
 // Decorate the panel item with the CVS-related data
 //==========================================================================>>
 
-void CvsPlugin::DecoratePanelItem( PluginPanelItem& pi, const CvsEntry *pCvsEntry, const char *szTag, CvsFileStatus fs )
+void CvsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, const string& sTag )
 {
     if ( strcmp( pi.FindData.cFileName, ".." ) == 0 || _stricmp( ExtractFileName(pi.FindData.cFileName).c_str(), "CVS" ) == 0 )
         return;
@@ -806,10 +806,12 @@ void CvsPlugin::DecoratePanelItem( PluginPanelItem& pi, const CvsEntry *pCvsEntr
     for ( int i = 0; i < nCustomColumns; ++i )
         pi.CustomColumnData[i] = cszEmptyLine;
 
+    EVcsStatus fs = entry.status;
+
     char cStatus = fs == fsAdded     ? 'A' :
                    fs == fsRemoved   ? 'R' :
                    fs == fsConflict  ? 'C' :
-                   fs == fsModified  ? ((pi.FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? '*' : 'M') :
+                   fs == fsModified  ? 'M' :
                    fs == fsOutdated  ? 'u' :
                    fs == fsNonCvs    ? '?' :
                    fs == fsAddedRepo ? 'a' :
@@ -828,39 +830,39 @@ void CvsPlugin::DecoratePanelItem( PluginPanelItem& pi, const CvsEntry *pCvsEntr
                             fs == fsNonCvs    ? '9' :
                                                 '6'   ];   // For sorting
 
-    if ( pCvsEntry == 0 ) {
+    if ( fs == fsNonCvs ) {
         pi.FindData.dwFileAttributes |= FILE_ATTRIBUTE_TEMPORARY;
         return;
     }
 
     if ( fs == fsGhost || fs == fsAddedRepo )
-        pi.FindData.dwFileAttributes |= (pCvsEntry->bDir ? FILE_ATTRIBUTE_DIRECTORY : 0) | FILE_ATTRIBUTE_HIDDEN;
+        pi.FindData.dwFileAttributes |= (entry.bDir ? FILE_ATTRIBUTE_DIRECTORY : 0) | FILE_ATTRIBUTE_HIDDEN;
 
     if ( IsFileDirty( fs ) )
         pi.FindData.dwFileAttributes |= FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED;
 
-    if ( !pCvsEntry->sRevision.empty() ) {
+    if ( !entry.sRevision.empty() ) {
         pi.CustomColumnData[1] = new char[nRevColumnWidth+1];
-        _snprintf( pi.CustomColumnData[1], nRevColumnWidth, "%*s", nRevColumnWidth, fs == fsAdded ? "Added" : pCvsEntry->sRevision.c_str() );
+        _snprintf( pi.CustomColumnData[1], nRevColumnWidth, "%*s", nRevColumnWidth, fs == fsAdded ? "Added" : entry.sRevision.c_str() );
         pi.CustomColumnData[1][nRevColumnWidth] = 0;
     }
 
-    if ( !pCvsEntry->sOptions.empty() ) {
+    if ( !entry.sOptions.empty() ) {
         pi.CustomColumnData[2] = new char[nOptColumnWidth+1];
-        _snprintf( pi.CustomColumnData[2], nOptColumnWidth, "%-*s", nOptColumnWidth, pCvsEntry->sOptions.c_str() );
+        _snprintf( pi.CustomColumnData[2], nOptColumnWidth, "%-*s", nOptColumnWidth, entry.sOptions.c_str() );
         pi.CustomColumnData[2][nOptColumnWidth] = 0;
     }
 
-    if ( pCvsEntry->bDir ) {
-        if ( szTag != 0 && *szTag != 0 ) {
-            pi.CustomColumnData[3] = new char[strlen(szTag)+1];
-            strcpy( pi.CustomColumnData[3], szTag + ((*szTag == 0) ? 0 : 1) );
+    if ( entry.bDir ) {
+        if ( !sTag.empty() ) {
+            pi.CustomColumnData[3] = new char[sTag.length()+1];
+            strcpy( pi.CustomColumnData[3], sTag.c_str() );
         }
     }
     else {
-        if ( !pCvsEntry->sTagdate.empty() ) {
-            pi.CustomColumnData[3] = new char[pCvsEntry->sTagdate.size()+1];
-            strcpy( pi.CustomColumnData[3], pCvsEntry->sTagdate.c_str() + (pCvsEntry->sTagdate.empty() ? 0 : 1) );
+        if ( !entry.sTagdate.empty() ) {
+            pi.CustomColumnData[3] = new char[entry.sTagdate.size()+1];
+            strcpy( pi.CustomColumnData[3], entry.sTagdate.c_str() + (entry.sTagdate.empty() ? 0 : 1) );
         }
     }
 }
@@ -873,7 +875,7 @@ int CvsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
 {
     // Read the CVS data (does nothing if not in a CVS-controlled directory)
 
-    CvsData cvsData( szCurDir );
+    auto_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
 
     // Enumerate all the file entries in the current directory
 
@@ -886,74 +888,42 @@ int CvsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
     vector<PluginPanelItem> v; // Let the vector do all the allocation/reallocation work
     v.reserve( 512 );          // It is rare that a directory contains more entries
 
-    bool bDirtyFilesExist = false;
-
-    for ( dir_iterator p = dir_iterator(szCurDir,true); p != dir_iterator(); ++p )
+    if ( apVcsData->IsValid() )
     {
-        if ( strcmp( p->cFileName, "." ) == 0 )
-            continue;
-
-        pi.FindData = *p;
-
-        if ( strcmp( p->cFileName, ".." ) != 0 )
-            array_strcpy( pi.FindData.cFileName, CatPath(szCurDir,p->cFileName).c_str() );
-
-        if ( strcmp( p->cFileName, ".." ) != 0 && _stricmp( p->cFileName, "CVS" ) != 0 && cvsData.IsValid() )
-        {
-            const CvsEntry *pCvsEntry = 0;
-            CvsFileStatus fs = GetFileStatus( *p, cvsData, szCurDir, &pCvsEntry );
-
-            bDirtyFilesExist |= IsFileDirty( fs );
-
-            string sPathName = CatPath( szCurDir, pi.FindData.cFileName );
-
-            if ( fs == fsNonCvs && OutdatedFiles.ContainsEntry(sPathName) )
-                fs = fsAddedRepo;
-
-            DecoratePanelItem( pi, pCvsEntry, cvsData.m_sTag.c_str(),
-                (pi.FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && DirtyDirs.ContainsDown(sPathName)     ? fsModified :
-                (pi.FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && OutdatedFiles.ContainsDown(sPathName) ? fsOutdated : fs );
-
-            if ( pCvsEntry )
-                cvsData.Entries().erase( p->cFileName );
-        }
-
-        v.push_back( pi );
-        memset( &pi, 0, sizeof PluginPanelItem );
-    }
-
-    // Add as "ghosts" the files/directories that are mentioned by CVS but not actually found
-
-    for ( CvsData::CvsEntries::iterator p = cvsData.Entries().begin(); p != cvsData.Entries().end(); ++p )
-    {
-        memset( &pi, 0, sizeof PluginPanelItem );
-        array_strcpy( pi.FindData.cFileName, CatPath(szCurDir,p->first.c_str()).c_str() );
-        DecoratePanelItem( pi, &p->second, cvsData.m_sTag.c_str(), fsGhost );
-        v.push_back( pi );
-    }
-
-    // Add as "added in repository" the files/directories that are in outdated files but not existing locally
-    // and not mentioned by CVS
-
-    for ( TSFileSet::iterator p = OutdatedFiles.begin(); p != OutdatedFiles.end(); ++p )
-    {
-        if ( IsFileFromDir()( *p, szCurDir ) &&
-             ::GetFileAttributes( p->c_str() ) == INVALID_FILE_ATTRIBUTES &&
-             cvsData.Entries().find( ExtractFileName(*p) ) == cvsData.Entries().end() )
+        for ( VcsData::VcsEntries::iterator p = apVcsData->entries().begin(); p != apVcsData->entries().end(); ++p )
         {
             memset( &pi, 0, sizeof PluginPanelItem );
-            array_strcpy( pi.FindData.cFileName, p->c_str() );
-            DecoratePanelItem( pi, 0, cvsData.m_sTag.c_str(), fsAddedRepo );
+            pi.FindData = p->second.fileFindData;
+
+            if ( p->second.bDir )
+            {
+                pi.FindData.dwFileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+                string sFullPathName = CatPath( szCurDir, p->first.c_str() );
+                
+                if ( DirtyDirs.ContainsDown( sFullPathName ) )
+                    p->second.status = fsModified;
+                else if ( OutdatedFiles.ContainsDown( sFullPathName ) )
+                    p->second.status = fsOutdated;
+            }
+
+            array_strcpy( pi.FindData.cFileName, strcmp(p->first.c_str(),"..") == 0 ? ".." : CatPath(szCurDir,p->first.c_str()).c_str() );
+            DecoratePanelItem( pi, p->second, apVcsData->getTag() );
             v.push_back( pi );
         }
     }
-
-    // Add/remove the current directory in the list of the directories containing dirty files
-
-    if ( bDirtyFilesExist )
-        DirtyDirs.Add( szCurDir );
     else
-        DirtyDirs.Remove( szCurDir );
+    {
+        for ( dir_iterator p = dir_iterator(szCurDir,true); p != dir_iterator(); ++p )
+        {
+            if ( strcmp( p->cFileName, "." ) == 0 )
+                continue;
+
+            memset( &pi, 0, sizeof PluginPanelItem );
+            pi.FindData = *p;
+            array_strcpy( pi.FindData.cFileName, CatPath(szCurDir,p->cFileName).c_str() );
+            v.push_back( pi );
+        }
+    }
 
     // Convert the data into old-fashioned format required by FAR
 
@@ -978,9 +948,9 @@ int CvsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
             if ( (pinfo.PanelItems[i].Flags & PPIF_SELECTED) == 0 )
                 continue;
 
-            CvsData::CvsEntries::const_iterator p = cvsData.Entries().find( ExtractFileName( pinfo.PanelItems[i].FindData.cFileName ) );
+            VcsData::VcsEntries::const_iterator p = apVcsData->entries().find( ExtractFileName( pinfo.PanelItems[i].FindData.cFileName ) );
 
-            if ( p == cvsData.Entries().end() )
+            if ( p == apVcsData->entries().end() )
                 continue;
 
             pinfo.PanelItems[i].Flags &= ~PPIF_SELECTED;
@@ -1151,9 +1121,9 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
             }
         };
 
-        CvsData cvsData( szCurDir );
+        auto_ptr<VcsData> apVcsData( szCurDir );
 
-        if ( !cvsData || !IsCvsFile(pi.PanelItems[pi.CurrentItem].FindData, cvsData, szCurDir) && !OutdatedFiles.ContainsEntry(szCurFile) )
+        if ( !apVcsData->IsValid() || !IsCvsFile(pi.PanelItems[pi.CurrentItem].FindData,*apVcsData) && !OutdatedFiles.ContainsEntry(szCurFile) )
             return FALSE;
 
         TempFile tempFile;
