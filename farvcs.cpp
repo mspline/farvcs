@@ -920,7 +920,7 @@ int CvsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
 
             memset( &pi, 0, sizeof PluginPanelItem );
             pi.FindData = *p;
-            array_strcpy( pi.FindData.cFileName, CatPath(szCurDir,p->cFileName).c_str() );
+            array_strcpy( pi.FindData.cFileName, strcmp(p->cFileName,"..") == 0 ? ".." : CatPath(szCurDir,p->cFileName).c_str() );
             v.push_back( pi );
         }
     }
