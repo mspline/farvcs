@@ -380,7 +380,7 @@ private:
         virtual bool DoExecute()
         {
             static int cnPreCountedDepth = 2;
-            int nPreCountedDirs = CountCvsDirs( GetCvsPlugin()->szCurDir, cnPreCountedDepth );
+            int nPreCountedDirs = CountVcsDirs( GetCvsPlugin()->szCurDir, cnPreCountedDepth );
 
             int nCountedDirs = 0; // Tracks the number of the visited directories above a given level
 
@@ -392,10 +392,10 @@ private:
         {
             // Read the CVS data (does nothing if not in a CVS-controlled directory)
 
-            auto_ptr<VcsData> apVcsData = GetVcsData( sDir );
-
-            if ( !apVcsData->IsValid() )
+            if ( !IsVcsDir( sDir ) )
                 return true;
+
+            boost::intrusive_ptr<VcsData> apVcsData = GetVcsData( sDir );
 
             // Enumerate all the entries in the current directory
 
@@ -408,7 +408,7 @@ private:
 
                 string sPathName = CatPath( sDir.c_str(), p->cFileName );
 
-                if ( (p->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && IsCvsDir(sPathName) )
+                if ( (p->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && IsVcsDir(sPathName) )
                 {
                     if ( nLevel < nPreCountedDepth )
                         ++nCountedDirs;
@@ -749,7 +749,7 @@ int CvsPlugin::SetDirectory( const char *pszDir, int /*OpMode*/ )
     array_strcpy( szCurDir, sNewDir.c_str() );
     ::SetCurrentDirectory( szCurDir );
 
-    if ( ::Settings.bAutomaticMode && !IsCvsDir( sNewDir ) )
+    if ( ::Settings.bAutomaticMode && !IsVcsDir( sNewDir ) )
         StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_CLOSEPLUGIN, szCurDir );
 
     return TRUE;
@@ -768,9 +768,12 @@ void CvsPlugin::GetOpenPluginInfo( OpenPluginInfo *pInfo )
     pInfo->CurDir = szCurDir;
     pInfo->Format = 0;
 
-    auto_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
+    string sLabel = !IsVcsDir(szCurDir) ? "VCS" : GetVcsData(szCurDir)->getTag();
+
+    if ( sLabel.empty() )
+        sLabel = "TRUNK";
     
-    array_sprintf( szPanelTitle, " [%s] %s ", apVcsData->getTag().empty() ? "CVS" : apVcsData->getTag().c_str(), szCurDir );
+    array_sprintf( szPanelTitle, " [%s] %s ", sLabel.c_str(), szCurDir );
     pInfo->PanelTitle = szPanelTitle;
 
     pInfo->InfoLines = 0;
@@ -794,7 +797,7 @@ void CvsPlugin::GetOpenPluginInfo( OpenPluginInfo *pInfo )
 
 void CvsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, const string& sTag )
 {
-    if ( strcmp( pi.FindData.cFileName, ".." ) == 0 || _stricmp( ExtractFileName(pi.FindData.cFileName).c_str(), "CVS" ) == 0 )
+    if ( strcmp( pi.FindData.cFileName, ".." ) == 0 )
         return;
 
     // Allocate storage for and fill custom columns values
@@ -813,7 +816,7 @@ void CvsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, c
                    fs == fsConflict  ? 'C' :
                    fs == fsModified  ? 'M' :
                    fs == fsOutdated  ? 'u' :
-                   fs == fsNonCvs    ? '?' :
+                   fs == fsNonVcs    ? '?' :
                    fs == fsAddedRepo ? 'a' :
                    fs == fsGhost     ? '!' :
                                        ' ';
@@ -827,10 +830,10 @@ void CvsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, c
                             fs == fsModified  ? '1' :
                             fs == fsGhost     ? '4' :
                             fs == fsAddedRepo ? '8' :
-                            fs == fsNonCvs    ? '9' :
+                            fs == fsNonVcs    ? '9' :
                                                 '6'   ];   // For sorting
 
-    if ( fs == fsNonCvs ) {
+    if ( fs == fsNonVcs ) {
         pi.FindData.dwFileAttributes |= FILE_ATTRIBUTE_TEMPORARY;
         return;
     }
@@ -875,7 +878,7 @@ int CvsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
 {
     // Read the CVS data (does nothing if not in a CVS-controlled directory)
 
-    auto_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
+    boost::intrusive_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
 
     // Enumerate all the file entries in the current directory
 
@@ -888,7 +891,7 @@ int CvsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
     vector<PluginPanelItem> v; // Let the vector do all the allocation/reallocation work
     v.reserve( 512 );          // It is rare that a directory contains more entries
 
-    if ( apVcsData->IsValid() )
+    if ( apVcsData && apVcsData->IsValid() )
     {
         for ( VcsData::VcsEntries::iterator p = apVcsData->entries().begin(); p != apVcsData->entries().end(); ++p )
         {
@@ -933,6 +936,9 @@ int CvsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
         *pItemsNumber = v.size();
         memcpy( *ppItems, &v[0], v.size() * sizeof PluginPanelItem );
     }
+
+    if ( !apVcsData )
+        return TRUE;
 
     // Make sure the non-existing files are not selected
 
@@ -1121,9 +1127,9 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
             }
         };
 
-        auto_ptr<VcsData> apVcsData( szCurDir );
+        boost::intrusive_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
 
-        if ( !apVcsData->IsValid() || !IsCvsFile(pi.PanelItems[pi.CurrentItem].FindData,*apVcsData) && !OutdatedFiles.ContainsEntry(szCurFile) )
+        if ( !apVcsData || !apVcsData->IsValid() || !IsVcsFile(pi.PanelItems[pi.CurrentItem].FindData,*apVcsData) && !OutdatedFiles.ContainsEntry(szCurFile) )
             return FALSE;
 
         TempFile tempFile;
@@ -1255,7 +1261,7 @@ unsigned int CvsPlugin::MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTer
         PanelInfo pi;
         StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_GETPANELSHORTINFO, &pi );
 
-        if ( pi.PanelType != PTYPE_FILEPANEL || pi.Plugin || !IsCvsDir( pi.CurDir ) )
+        if ( pi.PanelType != PTYPE_FILEPANEL || pi.Plugin || !IsVcsDir( pi.CurDir ) )
             continue;
 
         // Dirty hack to check that no information/menu/dialog is active
@@ -1326,4 +1332,68 @@ unsigned int CvsPlugin::MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTer
         DWORD dwWritten;
         ::WriteConsoleInput( hConsoleInput, recs, array_size(recs), &dwWritten );
     }
+}
+
+class PluginDll
+{
+public:
+    PluginDll( const char *szDllName )
+    {
+        m_hModule = ::LoadLibrary( szDllName );
+        
+        if ( m_hModule == 0 )
+        {
+            Log( "LoadLibrary( %s ) failed: %d", szDllName, ::GetLastError() );
+            return;
+        }
+
+        IsPluginDir      = (bool (*)( const string& sDir ))::GetProcAddress( m_hModule, "IsPluginDir" );
+        GetPluginDirData = (VcsData *(*)( const string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles ))::GetProcAddress( m_hModule, "GetPluginDirData" );
+    }
+
+    ~PluginDll()
+    {
+        if ( m_hModule )
+            ::FreeLibrary( m_hModule  );
+    }
+
+    bool IsValid() { return m_hModule != 0; }
+
+    bool (*IsPluginDir)( const string& sDir );
+    VcsData *(*GetPluginDirData)( const string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles );
+
+private:
+    HMODULE m_hModule;
+};
+
+bool IsVcsDir( const string& sDir )
+{
+    static PluginDll plugins[] =
+    {
+        PluginDll( "farvcs_cvs.dll" ),
+        PluginDll( "farvcs_svn.dll" ),
+        PluginDll( "farvcs_p4.dll" )
+    };
+
+    for ( unsigned int i = 0; i < array_size(plugins); ++i )
+        if ( plugins[i].IsValid() && plugins[i].IsPluginDir( sDir ) )
+            return true;
+
+    return false;
+}
+
+boost::intrusive_ptr<VcsData> GetVcsData( const string& sDir )
+{
+    static PluginDll plugins[] =
+    {
+        PluginDll( "farvcs_cvs.dll" ),
+        PluginDll( "farvcs_svn.dll" ),
+        PluginDll( "farvcs_p4.dll" )
+    };
+
+    for ( unsigned int i = 0; i < array_size(plugins); ++i )
+        if ( plugins[i].IsValid() && plugins[i].IsPluginDir( sDir ) )
+            return plugins[i].GetPluginDirData( sDir, DirtyDirs, OutdatedFiles );
+
+    return 0;
 }

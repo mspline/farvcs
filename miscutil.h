@@ -29,6 +29,31 @@
 #include <boost/serialization/set.hpp>
 
 //==========================================================================>>
+// printf-like wrapper around ::OutputDebugString
+//
+// Should be in cpp-file, not here, but it is more convenient this way
+// as it is used in projects with static and dynamic runtimes
+//==========================================================================>>
+
+inline void Log( const char *szFormat, ... )
+{
+    va_list args;
+    char szBuf[2048];
+    long len;
+
+    va_start( args, szFormat );
+    len = _vsnprintf( szBuf, sizeof(szBuf), szFormat, args );
+    va_end(args);
+
+    if ( len < 0 || len > sizeof(szBuf)-1 )
+        len = sizeof(szBuf)-1;
+
+    szBuf[len] = '\0';
+
+    ::OutputDebugString( szBuf );
+}
+
+//==========================================================================>>
 // Trivia
 //==========================================================================>>
 
@@ -65,11 +90,8 @@ template <int N> inline int array_sprintf( char (&dst)[N], const char *szFormat,
     return len;
 }
 
-void Log( const char *szFormat, ... );
 std::vector<std::string> SplitString( const std::string& s, char c );
 void SafeSleep( DWORD dwMilliseconds );
-std::string CatPath( const char *szDir, const char *szSubDir );
-std::string ExtractFileName( const std::string& sPathName );
 
 inline std::string u2s( unsigned int u )
 {
@@ -178,8 +200,13 @@ class TSFileSet
 {
 public:
     typedef std::set<std::string>::iterator iterator;
+    typedef std::set<std::string>::const_iterator const_iterator;
+
     iterator begin() { return cont.begin(); }
     iterator end()   { return cont.end();   }
+
+    const_iterator begin() const { return cont.begin(); }
+    const_iterator end()   const { return cont.end();   }
 
 public:
     void Add( const std::string& sFile )                 { CSGuard _(cs); cont.insert(sFile); }
@@ -230,6 +257,62 @@ private:
 };
 
 //==========================================================================>>
+// Constructs new directory name from a current directory name and a
+// relative directory name.
+// If the relative directory name turns out absolute, it simply replaces
+// the current directory name.
+// If the relateive directory name is "..", the current directory name
+// is shortened to its parent directory name.
+//
+// Should be in cpp-file, not here, but it is more convenient this way
+// as it is used in projects with static and dynamic runtimes
+//==========================================================================>>
+
+inline std::string CatPath( const char *szCurDir, const char *szSubDir )
+{
+    if ( szCurDir == 0 || *szCurDir == 0 )
+        return "";
+    else if ( szSubDir == 0 || *szSubDir == 0 )
+        return szCurDir;
+    else if ( szSubDir[1] == ':' )
+        return szSubDir;
+    else if ( strchr( "\\/", *szSubDir ) != 0 )
+        return szCurDir[1] == ':' ? std::string(szCurDir,2) + szSubDir : szSubDir;
+    else if ( strcmp( szSubDir, ".." ) == 0 )
+    {
+        const char *p = szCurDir + strlen(szCurDir) - 1;
+        if ( strchr( "\\/", *p ) != 0 && p > szCurDir && *(p-1) != ':' )
+            --p;
+        while ( p >= szCurDir && strchr( "\\/", *p ) == 0 )
+            --p;
+
+        return p < szCurDir                   ? szCurDir :
+               p == szCurDir || *(p-1) == ':' ? std::string( szCurDir, p+1-szCurDir ) :
+                                                std::string( szCurDir, p-szCurDir );
+    }
+    else
+    {
+        std::string sNewDir = szCurDir;
+        if ( !sNewDir.empty() && strchr( "\\/:", *sNewDir.rbegin() ) == 0 )
+            sNewDir += "\\";
+        return sNewDir + szSubDir;
+    }
+}
+
+//==========================================================================>>
+// Extracts the filename from a full pathname
+//
+// Should be in cpp-file, not here, but it is more convenient this way
+// as it is used in projects with static and dynamic runtimes
+//==========================================================================>>
+
+inline std::string ExtractFileName( const std::string& sPathName )
+{
+    size_t iLastSlash = sPathName.find_last_of( "\\/:" );
+    return iLastSlash == std::string::npos ? sPathName : sPathName.substr( iLastSlash+1 );
+}
+
+//==========================================================================>>
 // STL-compliant iterator wrapper around ::FindFirstFile/::FindNextFile
 //==========================================================================>>
 
@@ -240,17 +323,18 @@ template <typename T> class ref_countable
 private:
     friend void intrusive_ptr_add_ref( ref_countable<T> *p )
     {
-        ++p->ref_counter;
+        ++static_cast<T*>(p)->ref_counter;
     }
 
     friend void intrusive_ptr_release( ref_countable<T> *p )
     {
-        if ( --p->ref_counter == 0 )
-            delete static_cast<T*>(p);
+        if ( --static_cast<T*>(p)->ref_counter == 0 )
+            static_cast<T*>(p)->ref_countable_self_destroy();
     }
 
 protected:
     ref_countable() : ref_counter(0) {}
+    void ref_countable_self_destroy() { delete static_cast<T*>(this); }
 
 private:
     int ref_counter;
