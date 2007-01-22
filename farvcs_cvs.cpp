@@ -1,5 +1,5 @@
 /*****************************************************************************
- File name:  cvs.cpp
+ File name:  farvcs_cvs.cpp
  Project:    FarVCS plugin
  Purpose:    CVS integration for FarVCS plugin
  Compiler:   MS Visual C++ 8.0
@@ -11,7 +11,7 @@
 #include <fstream>
 #include <time.h>
 #include <boost/utility.hpp>
-#include "cvsentries.h"
+#include "vcs.h"
 
 using namespace std;
 using namespace boost;

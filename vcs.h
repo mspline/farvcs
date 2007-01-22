@@ -1,9 +1,11 @@
-#ifndef __VCSENTRIES_H
-#define __VCSENTRIES_H
+#ifndef __VCS_H
+#define __VCS_H
 
 #include <string>
 #include <vector>
 #include <map>
+#include <memory.h>
+#include <windows.h>
 #include "miscutil.h"
 
 enum EVcsStatus
@@ -28,6 +30,9 @@ enum EVcsStatus
     fsExternal,
     fsIncomplete
 };
+
+extern TSFileSet DirtyDirs;
+extern TSFileSet OutdatedFiles;
 
 //==========================================================================>>
 // Encapsulates the information on a single entry in a VCS directory
@@ -138,4 +143,4 @@ inline bool IsVcsFile( const WIN32_FIND_DATA& findData, const VcsData& vcsData )
     return p != vcsData.entries().end() ? IsVcsFile(p->second.status) : false;
 }
 
-#endif // __VCSENTRIES_H
+#endif // __VCS_H

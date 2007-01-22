@@ -23,7 +23,7 @@
 #include "farcolor.hpp"
 #include "miscutil.h"
 #include "plugutil.h"
-#include "cvsentries.h"
+#include "vcs.h"
 #include "regwrap.h"
 #include "enforce.h"
 #include "lang.h"
@@ -39,7 +39,7 @@ PluginStartupInfo StartupInfo;
 FarStandardFunctions FSF;
 HINSTANCE hInstance;           // The DLL module handle
 
-char cszPluginName[] = "CVS Assistant";
+char cszPluginName[] = "VCS Assistant";
 char cszDllName[]    = "farvcs.dll";
 char cszCacheFile[]  = "farvcs.csh";
 
@@ -80,15 +80,15 @@ BOOL WINAPI DllMain( HINSTANCE hInstDll, DWORD dwReason, LPVOID )
 }
 
 //==========================================================================>>
-// The CVS plugin proper
+// The VCS plugin proper
 //==========================================================================>>
 
-class CvsPlugin
+class VcsPlugin
 {
 public:
     struct PluginSettings
     {
-        bool bAutomaticMode; // Auto-start/stop plugin when entering/leaving a CVS-controlled directory
+        bool bAutomaticMode; // Auto-start/stop plugin when entering/leaving a VCS-controlled directory
         char cPanelMode;     // Panel mode to use when starting plugin. Ranges '0'-'9'. '\0' means "no change".
 
         void Load();
@@ -133,7 +133,7 @@ public:
     };
 
 public:
-    explicit CvsPlugin( const char *pszCurDir, const char *pszItemToStart )
+    explicit VcsPlugin( const char *pszCurDir, const char *pszItemToStart )
     {
         array_strcpy( szCurDir, pszCurDir );
         array_strcpy( szItemToStart, pszItemToStart );
@@ -191,14 +191,14 @@ public:
     int ProcessKey( int Key, unsigned int ControlState );
     int ProcessEvent( int Event, void *Param );
 
-    virtual ~CvsPlugin() {}
+    virtual ~VcsPlugin() {}
 
     static void StartMonitoringThread() { MonitoringThread.Start( &StartupInfo ); }
     static void StopMonitoringThread() { MonitoringThread.Stop( 1000 ); }
 
 private:
-    CvsPlugin( const CvsPlugin& );
-    CvsPlugin& operator=( const CvsPlugin& );
+    VcsPlugin( const VcsPlugin& );
+    VcsPlugin& operator=( const VcsPlugin& );
 
     char szCurDir[MAX_PATH];
 
@@ -231,7 +231,7 @@ private:
     class LongOperation
     {
     public:
-        LongOperation( const CvsPlugin *pCvsPlugin ) : m_pCvsPlugin( pCvsPlugin ), m_hDlg( 0 ) {}
+        LongOperation( const VcsPlugin *pVcsPlugin ) : m_pVcsPlugin( pVcsPlugin ), m_hDlg( 0 ) {}
         virtual ~LongOperation() {}
 
         bool Execute()
@@ -250,13 +250,13 @@ private:
         }
 
     protected:
-        const CvsPlugin *GetCvsPlugin() { return m_pCvsPlugin; }
+        const VcsPlugin *GetVcsPlugin() { return m_pVcsPlugin; }
         HANDLE GetDlg() { return m_hDlg; }
 
         virtual void DoGetDlg( RECT& r, vector<InitDialogItem>& vInitItems ) = 0;
         virtual bool DoExecute() = 0;
 
-        const CvsPlugin *m_pCvsPlugin;
+        const VcsPlugin *m_pVcsPlugin;
         HANDLE m_hDlg;
 
     private:
@@ -292,7 +292,7 @@ private:
     class SimpleLongOperation : public LongOperation
     {
     public:
-        SimpleLongOperation( const CvsPlugin *pCvsPlugin ) : LongOperation( pCvsPlugin ), dwLastUserInteraction(0) {}
+        SimpleLongOperation( const VcsPlugin *pVcsPlugin ) : LongOperation( pVcsPlugin ), dwLastUserInteraction(0) {}
 
     protected:
         virtual void DoGetDlg( RECT& r, vector<InitDialogItem>& vInitItems )
@@ -371,26 +371,26 @@ private:
     class Traversal : public SimpleLongOperation
     {
     public:
-        Traversal( CvsPlugin *pCvsPlugin ) : SimpleLongOperation( pCvsPlugin ) {}
+        Traversal( VcsPlugin *pVcsPlugin ) : SimpleLongOperation( pVcsPlugin ) {}
 
     protected:
         virtual unsigned long DoGetPrompt() { return M_Traversing; }
-        virtual const char *DoGetInitialInfo() { return GetCvsPlugin()->szCurDir; }
+        virtual const char *DoGetInitialInfo() { return GetVcsPlugin()->szCurDir; }
 
         virtual bool DoExecute()
         {
             static int cnPreCountedDepth = 2;
-            int nPreCountedDirs = CountVcsDirs( GetCvsPlugin()->szCurDir, cnPreCountedDepth );
+            int nPreCountedDirs = CountVcsDirs( GetVcsPlugin()->szCurDir, cnPreCountedDepth );
 
             int nCountedDirs = 0; // Tracks the number of the visited directories above a given level
 
-            return Traverse( GetCvsPlugin()->szCurDir, nPreCountedDirs, cnPreCountedDepth, 0, nCountedDirs );
+            return Traverse( GetVcsPlugin()->szCurDir, nPreCountedDirs, cnPreCountedDepth, 0, nCountedDirs );
         }
 
     private:
         bool Traverse( const string& sDir, int nPreCountedDirs, int nPreCountedDepth, int nLevel, int& nCountedDirs )
         {
-            // Read the CVS data (does nothing if not in a CVS-controlled directory)
+            // Read the VCS data (does nothing if not in a VCS-controlled directory)
 
             if ( !IsVcsDir( sDir ) )
                 return true;
@@ -435,12 +435,12 @@ private:
     class Executor : public SimpleLongOperation
     {
     public:
-        Executor( const CvsPlugin *pCvsPlugin, const char *szCmdLine, const function<void(char*)>* const pf = 0, const char *szTmpFile = 0 ) :
-            SimpleLongOperation( pCvsPlugin ),
+        Executor( const VcsPlugin *pVcsPlugin, const char *szCmdLine, const function<void(char*)>* const pf = 0, const char *szTmpFile = 0 ) :
+            SimpleLongOperation( pVcsPlugin ),
             sCmdLine( szCmdLine ),
             pfNewLineCallback( pf ),
             sTempFileName( szTmpFile ? szTmpFile : "" ),
-            sPrompt( sformat( "%s>%s", pCvsPlugin->szCurDir, szCmdLine ) )
+            sPrompt( sformat( "%s>%s", pVcsPlugin->szCurDir, szCmdLine ) )
         {}
 
     protected:
@@ -469,7 +469,7 @@ private:
 
             W32Handle HWritePipe( ENF_H( ::CreateFile( sPipeName.c_str(), GENERIC_WRITE, 0, &sa, OPEN_EXISTING, 0, 0 ) ) );
 
-            W32Handle HProcess = ExecuteConsoleNoWait( m_pCvsPlugin->szCurDir,
+            W32Handle HProcess = ExecuteConsoleNoWait( m_pVcsPlugin->szCurDir,
                                                        sCmdLine.c_str(),
                                                        HWritePipe,
                                                        sTempFileName.empty() ? HWritePipe : 0 );
@@ -588,12 +588,12 @@ private:
 // Configuration settings
 //==========================================================================>>
 
-CvsPlugin::PluginSettings Settings;
-CvsPlugin::Cache          Cache;
+VcsPlugin::PluginSettings Settings;
+VcsPlugin::Cache          Cache;
 
-const char * const CvsPlugin::PluginSettings::cszSettingsKey = "HKEY_CURRENT_USER\\Software\\FAR\\Plugins\\FarVCS";
+const char * const VcsPlugin::PluginSettings::cszSettingsKey = "HKEY_CURRENT_USER\\Software\\FAR\\Plugins\\FarVCS";
 
-void CvsPlugin::PluginSettings::Load()
+void VcsPlugin::PluginSettings::Load()
 {
     RegWrap rkey( cszSettingsKey );
     bAutomaticMode = rkey.ReadDword( "bAutomaticMode" ) != 0;
@@ -602,7 +602,7 @@ void CvsPlugin::PluginSettings::Load()
     cPanelMode = sPanelMode.empty() || !isdigit(sPanelMode[0]) ? 0 : sPanelMode[0];
 }
 
-void CvsPlugin::PluginSettings::Save() const
+void VcsPlugin::PluginSettings::Save() const
 {
     RegWrap rkey( cszSettingsKey, KEY_ALL_ACCESS );
     rkey.WriteDword( "bAutomaticMode", bAutomaticMode );
@@ -622,7 +622,7 @@ void ApplyAutomaticModeFromSettings()
 {
     if ( Settings.bAutomaticMode )
     {
-        // Warn the user if there is no hotkey assigned to our plugin in the CVS menu: we won't be able to autostart the panel
+        // Warn the user if there is no hotkey assigned to our plugin in the plugin menu: we won't be able to autostart the panel
 
         if ( !GetPluginHotkey( cszDllName ) )
             StartupInfo.Message( StartupInfo.ModuleNumber,
@@ -632,11 +632,11 @@ void ApplyAutomaticModeFromSettings()
                                  0,   // Items number
                                  0 ); // Buttons number
 
-        CvsPlugin::StartMonitoringThread();
+        VcsPlugin::StartMonitoringThread();
     }
     else
     {
-        CvsPlugin::StopMonitoringThread();
+        VcsPlugin::StopMonitoringThread();
     }
 }
 
@@ -673,20 +673,20 @@ HANDLE WINAPI _export OpenPlugin( int /*OpenFrom*/, int /*Item*/ )
     if ( pi.PanelType != PTYPE_FILEPANEL )
         return INVALID_HANDLE_VALUE;
 
-    return new CvsPlugin( pi.CurDir, pi.ItemsNumber > 0 ? pi.PanelItems[pi.CurrentItem].FindData.cFileName : "" ); // Deleted in ClosePlugin
+    return new VcsPlugin( pi.CurDir, pi.ItemsNumber > 0 ? pi.PanelItems[pi.CurrentItem].FindData.cFileName : "" ); // Deleted in ClosePlugin
 }
 
 void WINAPI _export ClosePlugin( HANDLE hPlugin )
 {
-    delete reinterpret_cast<CvsPlugin*>( hPlugin );
+    delete reinterpret_cast<VcsPlugin*>( hPlugin );
 }
 
-int  WINAPI _export SetDirectory     ( HANDLE hPlugin, const char *pszDir, int OpMode )                           { return reinterpret_cast<CvsPlugin*>( hPlugin )->SetDirectory( pszDir, OpMode ); }
-void WINAPI _export GetOpenPluginInfo( HANDLE hPlugin, OpenPluginInfo *pInfo )                                    {        reinterpret_cast<CvsPlugin*>( hPlugin )->GetOpenPluginInfo( pInfo ); }
-int  WINAPI _export GetFindData      ( HANDLE hPlugin, PluginPanelItem **ppItems, int *pItemsNumber, int OpMode ) { return reinterpret_cast<CvsPlugin*>( hPlugin )->GetFindData( ppItems, pItemsNumber, OpMode ); }
-void WINAPI _export FreeFindData     ( HANDLE hPlugin, PluginPanelItem *pItems, int ItemsNumber )                 {        reinterpret_cast<CvsPlugin*>( hPlugin )->FreeFindData( pItems, ItemsNumber ); }
-int  WINAPI _export ProcessKey       ( HANDLE hPlugin, int Key, unsigned int ControlState )                       { return reinterpret_cast<CvsPlugin*>( hPlugin )->ProcessKey( Key, ControlState ); }
-int  WINAPI _export ProcessEvent     ( HANDLE hPlugin, int Event, void *Param )                                   { return reinterpret_cast<CvsPlugin*>( hPlugin )->ProcessEvent( Event, Param ); }
+int  WINAPI _export SetDirectory     ( HANDLE hPlugin, const char *pszDir, int OpMode )                           { return reinterpret_cast<VcsPlugin*>( hPlugin )->SetDirectory( pszDir, OpMode ); }
+void WINAPI _export GetOpenPluginInfo( HANDLE hPlugin, OpenPluginInfo *pInfo )                                    {        reinterpret_cast<VcsPlugin*>( hPlugin )->GetOpenPluginInfo( pInfo ); }
+int  WINAPI _export GetFindData      ( HANDLE hPlugin, PluginPanelItem **ppItems, int *pItemsNumber, int OpMode ) { return reinterpret_cast<VcsPlugin*>( hPlugin )->GetFindData( ppItems, pItemsNumber, OpMode ); }
+void WINAPI _export FreeFindData     ( HANDLE hPlugin, PluginPanelItem *pItems, int ItemsNumber )                 {        reinterpret_cast<VcsPlugin*>( hPlugin )->FreeFindData( pItems, ItemsNumber ); }
+int  WINAPI _export ProcessKey       ( HANDLE hPlugin, int Key, unsigned int ControlState )                       { return reinterpret_cast<VcsPlugin*>( hPlugin )->ProcessKey( Key, ControlState ); }
+int  WINAPI _export ProcessEvent     ( HANDLE hPlugin, int Event, void *Param )                                   { return reinterpret_cast<VcsPlugin*>( hPlugin )->ProcessEvent( Event, Param ); }
 
 int WINAPI _export Configure( int /*ItemNumber*/ )
 {
@@ -729,14 +729,14 @@ int WINAPI _export Configure( int /*ItemNumber*/ )
 void WINAPI _export ExitFAR()
 {
     if ( Settings.bAutomaticMode )
-        CvsPlugin::StopMonitoringThread();
+        VcsPlugin::StopMonitoringThread();
 }
 
 //==========================================================================>>
 // Accepts an order to change the current directory
 //==========================================================================>>
 
-int CvsPlugin::SetDirectory( const char *pszDir, int /*OpMode*/ )
+int VcsPlugin::SetDirectory( const char *pszDir, int /*OpMode*/ )
 {
     string sNewDir = CatPath( szCurDir, pszDir );
 
@@ -759,7 +759,7 @@ int CvsPlugin::SetDirectory( const char *pszDir, int /*OpMode*/ )
 // GetOpenPluginInfo
 //==========================================================================>>
 
-void CvsPlugin::GetOpenPluginInfo( OpenPluginInfo *pInfo )
+void VcsPlugin::GetOpenPluginInfo( OpenPluginInfo *pInfo )
 {
     pInfo->StructSize = sizeof OpenPluginInfo;
     pInfo->Flags = OPIF_USEFILTER | OPIF_USESORTGROUPS | OPIF_USEHIGHLIGHTING | OPIF_SHOWPRESERVECASE |
@@ -792,10 +792,10 @@ void CvsPlugin::GetOpenPluginInfo( OpenPluginInfo *pInfo )
 }
 
 //==========================================================================>>
-// Decorate the panel item with the CVS-related data
+// Decorate the panel item with the VCS-related data
 //==========================================================================>>
 
-void CvsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, const string& sTag )
+void VcsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, const string& sTag )
 {
     if ( strcmp( pi.FindData.cFileName, ".." ) == 0 )
         return;
@@ -874,9 +874,9 @@ void CvsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, c
 // Prepare the file list for the panel
 //==========================================================================>>
 
-int CvsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*OpMode*/ )
+int VcsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*OpMode*/ )
 {
-    // Read the CVS data (does nothing if not in a CVS-controlled directory)
+    // Read the VCS data (does nothing if not in a VCS-controlled directory)
 
     boost::intrusive_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
 
@@ -970,7 +970,7 @@ int CvsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
     return TRUE;
 }
 
-void CvsPlugin::FreeFindData( PluginPanelItem *pItems, int ItemsNumber )
+void VcsPlugin::FreeFindData( PluginPanelItem *pItems, int ItemsNumber )
 {
     for ( int i = 0; i < ItemsNumber; ++i ) {
         for ( int j = 1; j < pItems[i].CustomColumnNumber; ++j ) // The zeroth item is the status and it is static
@@ -986,7 +986,7 @@ void CvsPlugin::FreeFindData( PluginPanelItem *pItems, int ItemsNumber )
 // when starting the plugin panel
 //==========================================================================>>
 
-int CvsPlugin::ProcessEvent( int Event, void * /*Param*/ )
+int VcsPlugin::ProcessEvent( int Event, void * /*Param*/ )
 {
     if ( Event == FE_REDRAW )
     {
@@ -1026,7 +1026,7 @@ int CvsPlugin::ProcessEvent( int Event, void * /*Param*/ )
 // because of the full pathnames in our PluginPanelItem structures
 //==========================================================================>>
 
-int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
+int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
 {
     // Check if we are on a file panel of a plugin
 
@@ -1118,15 +1118,6 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
     }
     else if ( bAltShift && (Key == VK_F3 || Key == VK_F4) ) // Alt+Shift+F3 or Alt+Shift+F4
     {
-        struct CvsAnnotateProcessor
-        {
-            void operator()( char *sz )
-            {
-                if ( strstr( sz, "Skipping binary file" ) != 0 )
-                    throw runtime_error( "Annotate is not supported for binary files" );
-            }
-        };
-
         boost::intrusive_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
 
         if ( !apVcsData || !apVcsData->IsValid() || !IsVcsFile(pi.PanelItems[pi.CurrentItem].FindData,*apVcsData) && !OutdatedFiles.ContainsEntry(szCurFile) )
@@ -1166,7 +1157,7 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
     {
         struct CvsUpProcessor
         {
-            CvsUpProcessor( const CvsPlugin& cvsPlugin, TSFileSet& outdatedFiles, bool bReal ) : pCvsPlugin_(&cvsPlugin), pOutdatedFiles_(&outdatedFiles), bReal_(bReal) {}
+            CvsUpProcessor( const VcsPlugin& vcsPlugin, TSFileSet& outdatedFiles, bool bReal ) : pVcsPlugin_(&vcsPlugin), pOutdatedFiles_(&outdatedFiles), bReal_(bReal) {}
 
             void operator()( char *sz )
             {
@@ -1177,13 +1168,13 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
                             *p = '\\';
 
                     if ( bReal_ )
-                        pOutdatedFiles_->Remove( CatPath( pCvsPlugin_->szCurDir, sz+2 ) );
+                        pOutdatedFiles_->Remove( CatPath( pVcsPlugin_->szCurDir, sz+2 ) );
                     else
-                        pOutdatedFiles_->Add( CatPath( pCvsPlugin_->szCurDir, sz+2 ) );
+                        pOutdatedFiles_->Add( CatPath( pVcsPlugin_->szCurDir, sz+2 ) );
                 }
             }
 
-            const CvsPlugin *pCvsPlugin_;
+            const VcsPlugin *pVcsPlugin_;
             TSFileSet *pOutdatedFiles_;
             bool bReal_;
         };
@@ -1232,13 +1223,13 @@ int CvsPlugin::ProcessKey( int Key, unsigned int ControlState )
 }
 
 //==========================================================================>>
-// Directory monitoring thread routine. Starts the CVS plugin panel as soon
-// as we enter a CVS-controlled directory
+// Directory monitoring thread routine. Starts the VCS plugin panel as soon
+// as we enter a VCS-controlled directory
 //==========================================================================>>
 
-Thread CvsPlugin::MonitoringThread( CvsPlugin::MonitoringThreadRoutine );
+Thread VcsPlugin::MonitoringThread( VcsPlugin::MonitoringThreadRoutine );
 
-unsigned int CvsPlugin::MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTerminateEvent )
+unsigned int VcsPlugin::MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTerminateEvent )
 {
     if ( pStartupInfo == 0 )
         return 0;
@@ -1313,7 +1304,7 @@ unsigned int CvsPlugin::MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTer
         if ( find( cpSecondRowBegin, cpScreenEnd, 0x2554 ) < cpScreenEnd )
             continue;
 
-        // Auto-starting the CVS panel (feasible only if a hotkey for the plugin is defined)
+        // Auto-starting the VCS panel (feasible only if a hotkey for the plugin is defined)
 
         unsigned char cPluginHotkey = GetPluginHotkey( cszDllName );
 
@@ -1332,68 +1323,4 @@ unsigned int CvsPlugin::MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTer
         DWORD dwWritten;
         ::WriteConsoleInput( hConsoleInput, recs, array_size(recs), &dwWritten );
     }
-}
-
-class PluginDll
-{
-public:
-    PluginDll( const char *szDllName )
-    {
-        m_hModule = ::LoadLibrary( szDllName );
-        
-        if ( m_hModule == 0 )
-        {
-            Log( "LoadLibrary( %s ) failed: %d", szDllName, ::GetLastError() );
-            return;
-        }
-
-        IsPluginDir      = (bool (*)( const string& sDir ))::GetProcAddress( m_hModule, "IsPluginDir" );
-        GetPluginDirData = (VcsData *(*)( const string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles ))::GetProcAddress( m_hModule, "GetPluginDirData" );
-    }
-
-    ~PluginDll()
-    {
-        if ( m_hModule )
-            ::FreeLibrary( m_hModule  );
-    }
-
-    bool IsValid() { return m_hModule != 0; }
-
-    bool (*IsPluginDir)( const string& sDir );
-    VcsData *(*GetPluginDirData)( const string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles );
-
-private:
-    HMODULE m_hModule;
-};
-
-bool IsVcsDir( const string& sDir )
-{
-    static PluginDll plugins[] =
-    {
-        PluginDll( "farvcs_cvs.dll" ),
-        PluginDll( "farvcs_svn.dll" ),
-        PluginDll( "farvcs_p4.dll" )
-    };
-
-    for ( unsigned int i = 0; i < array_size(plugins); ++i )
-        if ( plugins[i].IsValid() && plugins[i].IsPluginDir( sDir ) )
-            return true;
-
-    return false;
-}
-
-boost::intrusive_ptr<VcsData> GetVcsData( const string& sDir )
-{
-    static PluginDll plugins[] =
-    {
-        PluginDll( "farvcs_cvs.dll" ),
-        PluginDll( "farvcs_svn.dll" ),
-        PluginDll( "farvcs_p4.dll" )
-    };
-
-    for ( unsigned int i = 0; i < array_size(plugins); ++i )
-        if ( plugins[i].IsValid() && plugins[i].IsPluginDir( sDir ) )
-            return plugins[i].GetPluginDirData( sDir, DirtyDirs, OutdatedFiles );
-
-    return 0;
 }

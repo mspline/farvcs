@@ -1,4 +1,4 @@
-OBJFILES = farvcs.obj miscutil.obj plugutil.obj cvsentries.obj regwrap.obj
+OBJFILES = farvcs.obj miscutil.obj plugutil.obj vcs.obj regwrap.obj
 RESFILES = farvcs.res
 DEFFILE  = farvcs.def
 

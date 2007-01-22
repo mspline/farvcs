@@ -7,7 +7,7 @@
  Dependencies: STL
 *****************************************************************************/
 
-#include "cvsentries.h"
+#include "vcs.h"
 
 #undef _CRT_SECURE_NO_DEPRECATE
 
@@ -188,7 +188,7 @@ void SvnData::FillStatuses() const
     }
 
     // Add as "added in repository" the files/directories that are in outdated files but not existing locally
-    // and not mentioned by CVS
+    // and not mentioned by VCS
 
     for ( TSFileSet::const_iterator p = m_OutdatedFiles.begin(); p != m_OutdatedFiles.end(); ++p )
     {
