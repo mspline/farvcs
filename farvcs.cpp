@@ -838,7 +838,7 @@ void VcsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, c
         return;
     }
 
-    if ( fs == fsGhost || fs == fsAddedRepo )
+    if ( fs == fsGhost || fs == fsAddedRepo || fs == fsRemoved )
         pi.FindData.dwFileAttributes |= (entry.bDir ? FILE_ATTRIBUTE_DIRECTORY : 0) | FILE_ATTRIBUTE_HIDDEN;
 
     if ( IsFileDirty( fs ) )
