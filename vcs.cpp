@@ -49,23 +49,32 @@ public:
         m_hModule = ::LoadLibrary( sDllPathName.c_str() );
         
         if ( m_hModule == 0 )
-        {
-            Log( "Failed: %s", sDllPathName.c_str() );
             return;
-        }
 
+        Initialize       = (void (*)())::GetProcAddress( m_hModule, "Initialize" );
+        Uninitialize     = (void (*)())::GetProcAddress( m_hModule, "Uninitialize" );
         IsPluginDir      = (bool (*)( const string& sDir ))::GetProcAddress( m_hModule, "IsPluginDir" );
-        GetPluginDirData = (IVcsData *(*)( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles ))::GetProcAddress( m_hModule, "GetPluginDirData" );
+        GetPluginDirData = (IVcsData *(*)( const string& sDir,TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles ))::GetProcAddress( m_hModule, "GetPluginDirData" );
+
+        if ( Initialize )
+            Initialize();
     }
 
     virtual ~PluginDll()
     {
         if ( m_hModule )
+        {
+            if ( Uninitialize )
+                Uninitialize();
+
             ::FreeLibrary( m_hModule  );
+        }
     }
 
     bool IsValid() { return m_hModule != 0; }
 
+    void (*Initialize)();
+    void (*Uninitialize)();
     bool (*IsPluginDir)( const string& sDir );
     IVcsData *(*GetPluginDirData)( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles );
 
