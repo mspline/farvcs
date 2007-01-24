@@ -114,6 +114,7 @@ void SvnData::GetVcsEntriesOnly() const
     m_Entries = g_Entries;
 
     apr_pool_destroy(pool);
+    apr_terminate();
 }
 
 extern "C" __declspec(dllexport) bool IsPluginDir( const string& sDir )
