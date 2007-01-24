@@ -91,6 +91,10 @@ public:
         bool bAutomaticMode; // Auto-start/stop plugin when entering/leaving a VCS-controlled directory
         char cPanelMode;     // Panel mode to use when starting plugin. Ranges '0'-'9'. '\0' means "no change".
 
+        // CVS
+
+        unsigned int nCompressionLevel; // Compression level (-z option). Ranges 0-9;
+
         void Load();
         void Save() const;
 
@@ -600,13 +604,21 @@ void VcsPlugin::PluginSettings::Load()
 
     string sPanelMode = rkey.ReadString( "cPanelMode" );
     cPanelMode = sPanelMode.empty() || !isdigit(sPanelMode[0]) ? 0 : sPanelMode[0];
+
+    // CVS
+
+    nCompressionLevel = rkey.ReadDword( "nCompressionLevel" );
 }
 
 void VcsPlugin::PluginSettings::Save() const
 {
     RegWrap rkey( cszSettingsKey, KEY_ALL_ACCESS );
-    rkey.WriteDword( "bAutomaticMode", bAutomaticMode );
-    rkey.WriteString( "cPanelMode", string(1,cPanelMode) );
+    rkey.WriteDword ( "bAutomaticMode",    bAutomaticMode );
+    rkey.WriteString( "cPanelMode",        string(1,cPanelMode) );
+
+    // CVS
+
+    rkey.WriteDword( "nCompressionLevel", nCompressionLevel );
 }
 
 //==========================================================================>>
@@ -1187,10 +1199,19 @@ int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
         else
             OutdatedFiles.RemoveFilesDownDir( szCurDir );
 
-        const char *szGlobalFlags  = bReal  ? "" : " -n";
-        const char *szCommandFlags = bLocal ? " -l" : "";
+        string sGlobalFlags;
+        string sCommandFlags;
 
-        string sCmdLine = sformat( "cvs%s up%s", szGlobalFlags, szCommandFlags );
+        if ( Settings.nCompressionLevel != 0 )
+            sGlobalFlags += sformat( " -z%d", Settings.nCompressionLevel );
+
+        if ( !bReal )
+            sGlobalFlags += " -n";
+
+        if ( bLocal )
+            sCommandFlags += " -l";
+
+        string sCmdLine = sformat( "cvs%s up%s", sGlobalFlags.c_str(), sCommandFlags.c_str() );
 
         if ( Executor( this, sCmdLine.c_str(), &function<void(char*)>(CvsUpProcessor(*this,OutdatedFiles,bReal)) ).Execute() )
         {
