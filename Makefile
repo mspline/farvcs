@@ -21,8 +21,8 @@ install : farvcs.dll farvcs_cvs.dll farvcs_svn.dll
 	pskill far.exe
 	sleep 4
 	cp -p farvcs.dll "${PROGRAMFILES}/Far/Plugins/FarVCS"
-	cp -p farvcs_cvs.dll "c:/util"
-	cp -p farvcs_svn.dll "c:/util"
+	cp -p farvcs_cvs.dll "${PROGRAMFILES}/Far/Plugins/FarVCS"
+	cp -p farvcs_svn.dll "${PROGRAMFILES}/Far/Plugins/FarVCS"
 	"${PROGRAMFILES}/Far/Far.exe"
 
 clean :

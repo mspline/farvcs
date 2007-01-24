@@ -8,6 +8,7 @@
 *****************************************************************************/
 
 #include "vcs.h"
+#include "plugutil.h"
 
 using namespace std;
 using namespace boost;
@@ -42,10 +43,16 @@ class PluginDll : private noncopyable
 public:
     PluginDll( const char *szDllName )
     {
-        m_hModule = ::LoadLibrary( szDllName );
+        Log( "hInstance: 0x%08x", hInstance );
+
+        string sDllPathName = CatPath( ExtractPath(GetModuleFileName(hInstance)).c_str(), szDllName );
+        m_hModule = ::LoadLibrary( sDllPathName.c_str() );
         
         if ( m_hModule == 0 )
+        {
+            Log( "Failed: %s", sDllPathName.c_str() );
             return;
+        }
 
         IsPluginDir      = (bool (*)( const string& sDir ))::GetProcAddress( m_hModule, "IsPluginDir" );
         GetPluginDirData = (IVcsData *(*)( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles ))::GetProcAddress( m_hModule, "GetPluginDirData" );
@@ -66,17 +73,24 @@ private:
     HMODULE m_hModule;
 };
 
-static PluginDll plugins[] =
+// Meyers' singleton
+
+PluginDll *Plugins()
 {
-    PluginDll( "farvcs_cvs.dll" ),
-    PluginDll( "farvcs_svn.dll" ),
-    PluginDll( "farvcs_p4.dll" )
+    static PluginDll plugins[] =
+    {
+        PluginDll( "farvcs_cvs.dll" ),
+        PluginDll( "farvcs_svn.dll" ),
+        PluginDll( "farvcs_p4.dll" )
+    };
+
+    return plugins;
 };
 
 bool IsVcsDir( const string& sDir )
 {
-    for ( unsigned int i = 0; i < array_size(plugins); ++i )
-        if ( plugins[i].IsValid() && plugins[i].IsPluginDir( sDir ) )
+    for ( unsigned int i = 0; i < 3 /* Hack */ ; ++i )
+        if ( Plugins()[i].IsValid() && Plugins()[i].IsPluginDir( sDir ) )
             return true;
 
     return false;
@@ -84,9 +98,9 @@ bool IsVcsDir( const string& sDir )
 
 boost::intrusive_ptr<IVcsData> GetVcsData( const string& sDir )
 {
-    for ( unsigned int i = 0; i < array_size(plugins); ++i )
-        if ( plugins[i].IsValid() && plugins[i].IsPluginDir( sDir ) )
-            return plugins[i].GetPluginDirData( sDir, DirtyDirs, OutdatedFiles );
+    for ( unsigned int i = 0; i < 3 /* Hack */ ; ++i )
+        if ( Plugins()[i].IsValid() && Plugins()[i].IsPluginDir( sDir ) )
+            return Plugins()[i].GetPluginDirData( sDir, DirtyDirs, OutdatedFiles );
 
     return 0;
 }

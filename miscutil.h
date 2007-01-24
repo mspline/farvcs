@@ -93,6 +93,14 @@ template <int N> inline int array_sprintf( char (&dst)[N], const char *szFormat,
 std::vector<std::string> SplitString( const std::string& s, char c );
 void SafeSleep( DWORD dwMilliseconds );
 
+inline std::string GetModuleFileName( HMODULE hModule )
+{
+    char szFileName[MAX_PATH];
+    int len = ::GetModuleFileNameA( hModule, szFileName, array_size(szFileName)-1 );
+    szFileName[len] = 0;
+    return szFileName;
+}
+
 inline std::string u2s( unsigned int u )
 {
     char buf[256];
@@ -300,7 +308,7 @@ inline std::string CatPath( const char *szCurDir, const char *szSubDir )
 }
 
 //==========================================================================>>
-// Extracts the filename from a full pathname
+// Extracts the filename and the path from a full pathname
 //
 // Should be in cpp-file, not here, but it is more convenient this way
 // as it is used in projects with static and dynamic runtimes
@@ -310,6 +318,12 @@ inline std::string ExtractFileName( const std::string& sPathName )
 {
     size_t iLastSlash = sPathName.find_last_of( "\\/:" );
     return iLastSlash == std::string::npos ? sPathName : sPathName.substr( iLastSlash+1 );
+}
+
+inline std::string ExtractPath( const std::string& sPathName )
+{
+    size_t iLastSlash = sPathName.find_last_of( "\\/:" );
+    return iLastSlash == std::string::npos ? "" : sPathName.substr( 0, iLastSlash );
 }
 
 //==========================================================================>>
