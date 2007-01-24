@@ -7,7 +7,7 @@
  Dependencies: STL
 *****************************************************************************/
 
-#include "vcs.h"
+#include "vcsdata.h"
 
 #undef _CRT_SECURE_NO_DEPRECATE
 
@@ -18,66 +18,22 @@
 #include "svn_fs.h"
 
 using namespace std;
-using namespace boost;
 
-bool IsSvnDir( const std::string& sDir )
-{
-    return ::GetFileAttributes( CatPath( sDir.c_str(), ".svn\\entries" ).c_str() ) != (DWORD)-1;
-}
-
-class SvnData : public VcsData, private noncopyable
+class SvnData : public VcsData<SvnData>
 {
 public:
-    explicit SvnData( const std::string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles ) :
-        m_bValid( false ),
-        m_sDir( sDir ),
-        m_bEntriesLoaded( false ),
-        m_DirtyDirs( DirtyDirs ),
-        m_OutdatedFiles( OutdatedFiles )
-    {
-        if ( !IsSvnDir( sDir ) )
-            return;
-        m_bValid = true;
-    }
+    explicit SvnData( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles ) :
+        VcsData( sDir, DirtyDirs, OutdatedFiles )
+    {}
 
-    const VcsEntries& entries() const { return LazyLoadEntries(); }
-    VcsEntries& entries()             { return LazyLoadEntries(); }
-    const char *getTag() const { return m_sTag.c_str(); }
-    const char *getDir() const { return m_sDir.c_str(); }
-
-    bool IsValid() const { return m_bValid; }
-
+    static const char *GetAdminDirName() { return ".svn"; }
+    static const bool IsVcsDir( const string& sDir ) { return ::GetFileAttributes( CatPath( sDir.c_str(), ".svn\\entries" ).c_str() ) != (DWORD)-1; }
+    
     void self_destroy() { delete this; }
 
-private:
-    bool m_bValid;
-
-    std::string m_sDir;
-    std::string m_sTag;
-
-    TSFileSet& m_DirtyDirs;
-    const TSFileSet& m_OutdatedFiles;
-
-    mutable VcsEntries m_Entries;
-    mutable bool m_bEntriesLoaded;
-
-    VcsEntries& LazyLoadEntries() const;
-    void SvnGetEntries() const;
-
-    void FillStatuses() const;
+protected:
+    void GetVcsEntriesOnly() const;
 };
-
-VcsEntries& SvnData::LazyLoadEntries() const
-{
-    if ( m_bValid && !m_bEntriesLoaded )  // ToDo: Add synchronization to eliminate potential thread-safety issue
-    {
-        SvnGetEntries();
-        FillStatuses();
-        m_bEntriesLoaded = true;
-    }
-
-    return m_Entries;
-}
 
 VcsEntries g_Entries;
 const char *g_szDir;
@@ -116,7 +72,7 @@ void svn_wc_status_callback( void *, const char *path, svn_wc_status2_t *status 
 
 #define ENF( f ) { if ( f != 0 ) { printf( "ERROR in " #f ); return; } }
 
-void SvnData::SvnGetEntries() const
+void SvnData::GetVcsEntriesOnly() const
 {
     ENF( svn_cmdline_init( "farvcs", stderr ) );
 
@@ -135,12 +91,12 @@ void SvnData::SvnGetEntries() const
     svn_opt_revision_t requested_rev = { svn_opt_revision_base };
 
     g_Entries.clear();
-    g_szDir = m_sDir.c_str();
+    g_szDir = getDir();
 
     svn_error_t *perr = svn_client_status2
     (
         &result_rev,
-        m_sDir.c_str(),
+        getDir(),
         &requested_rev,
         svn_wc_status_callback,
         0,     // status_baton
@@ -156,62 +112,16 @@ void SvnData::SvnGetEntries() const
     perr;
 
     m_Entries = g_Entries;
+
+    apr_pool_destroy(pool);
 }
 
-void SvnData::FillStatuses() const
+extern "C" __declspec(dllexport) bool IsPluginDir( const string& sDir )
 {
-    bool bDirtyFilesExist = false;
-
-    for ( dir_iterator p(m_sDir,true); p != dir_iterator(); ++p )
-    {
-        VcsEntries::iterator pEntry = m_Entries.find( p->cFileName );
-        
-        if ( pEntry == m_Entries.end() )
-        {
-            if ( strcmp( p->cFileName, "." ) == 0 )
-                continue;
-
-            if ( strcmp( p->cFileName, ".svn" ) != 0 )
-                m_Entries.insert( make_pair( p->cFileName, VcsEntry( p->cFileName, *p ) ) );
-            else
-                m_Entries.insert( make_pair( p->cFileName, VcsEntry( p->cFileName, *p, fsNormal ) ) );
-
-            continue;
-        }
-
-        VcsEntry& entry = pEntry->second;
-        string sFullPathName = CatPath( m_sDir.c_str(), p->cFileName );
-
-        entry.fileFindData = *p;
-
-        bDirtyFilesExist |= IsFileDirty( entry.status );
-    }
-
-    // Add as "added in repository" the files/directories that are in outdated files but not existing locally
-    // and not mentioned by VCS
-
-    for ( TSFileSet::const_iterator p = m_OutdatedFiles.begin(); p != m_OutdatedFiles.end(); ++p )
-    {
-        string sFileName = ExtractFileName( *p );
-
-        if ( IsFileFromDir()(*p,m_sDir.c_str()) && m_Entries.find(sFileName) == m_Entries.end() )
-            m_Entries.insert( make_pair( sFileName, VcsEntry(false,sFileName,"","","",m_sTag,fsAddedRepo) ) );
-    }
-
-    // Add/remove the current directory in the list of the directories containing dirty files
-
-    if ( bDirtyFilesExist )
-        m_DirtyDirs.Add( m_sDir.c_str() );
-    else
-        m_DirtyDirs.Remove( m_sDir.c_str() );
+    return SvnData::IsVcsDir( sDir );
 }
 
-extern "C" __declspec(dllexport) bool IsPluginDir( const std::string& sDir )
-{
-    return IsSvnDir( sDir );
-}
-
-extern "C" __declspec(dllexport) VcsData *GetPluginDirData( const string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles )
+extern "C" __declspec(dllexport) IVcsData *GetPluginDirData( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles )
 {
     return new SvnData( sDir, DirtyDirs, OutdatedFiles );
 }

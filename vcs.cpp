@@ -48,7 +48,7 @@ public:
             return;
 
         IsPluginDir      = (bool (*)( const string& sDir ))::GetProcAddress( m_hModule, "IsPluginDir" );
-        GetPluginDirData = (VcsData *(*)( const string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles ))::GetProcAddress( m_hModule, "GetPluginDirData" );
+        GetPluginDirData = (IVcsData *(*)( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles ))::GetProcAddress( m_hModule, "GetPluginDirData" );
     }
 
     virtual ~PluginDll()
@@ -60,7 +60,7 @@ public:
     bool IsValid() { return m_hModule != 0; }
 
     bool (*IsPluginDir)( const string& sDir );
-    VcsData *(*GetPluginDirData)( const string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles );
+    IVcsData *(*GetPluginDirData)( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles );
 
 private:
     HMODULE m_hModule;
@@ -82,7 +82,7 @@ bool IsVcsDir( const string& sDir )
     return false;
 }
 
-boost::intrusive_ptr<VcsData> GetVcsData( const string& sDir )
+boost::intrusive_ptr<IVcsData> GetVcsData( const string& sDir )
 {
     for ( unsigned int i = 0; i < array_size(plugins); ++i )
         if ( plugins[i].IsValid() && plugins[i].IsPluginDir( sDir ) )

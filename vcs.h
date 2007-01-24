@@ -94,7 +94,7 @@ struct VcsEntry
 
 typedef std::map<std::string,VcsEntry,LessNoCase> VcsEntries;
 
-struct VcsData : public ref_countable<VcsData>
+struct IVcsData : public ref_countable<IVcsData>
 {
     virtual const VcsEntries& entries() const = 0;
     virtual VcsEntries& entries() = 0;
@@ -111,7 +111,7 @@ struct VcsData : public ref_countable<VcsData>
 };
 
 bool IsVcsDir( const std::string& sDir );
-boost::intrusive_ptr<VcsData> GetVcsData( const std::string& sDir );
+boost::intrusive_ptr<IVcsData> GetVcsData( const std::string& sDir );
 
 int CountVcsDirs( const std::string& sCurDir, int nDownToLevel );
 
@@ -123,7 +123,7 @@ inline bool IsFileDirty( EVcsStatus fs )
            fs == fsConflict;
 }
 
-inline bool IsFileDirty( const WIN32_FIND_DATA& findData, const VcsData& vcsData )
+inline bool IsFileDirty( const WIN32_FIND_DATA& findData, const IVcsData& vcsData )
 {
     VcsEntries::const_iterator p = vcsData.entries().find( ExtractFileName(findData.cFileName).c_str() );
     return p != vcsData.entries().end() ? IsFileDirty(p->second.status) : false;
@@ -135,7 +135,7 @@ inline bool IsVcsFile( EVcsStatus fs )
            fs != fsNonVcs;
 }
 
-inline bool IsVcsFile( const WIN32_FIND_DATA& findData, const VcsData& vcsData )
+inline bool IsVcsFile( const WIN32_FIND_DATA& findData, const IVcsData& vcsData )
 {
     VcsEntries::const_iterator p = vcsData.entries().find( ExtractFileName(findData.cFileName).c_str() );
     return p != vcsData.entries().end() ? IsVcsFile(p->second.status) : false;

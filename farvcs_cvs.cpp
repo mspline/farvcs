@@ -11,19 +11,9 @@
 #include <fstream>
 #include <time.h>
 #include <boost/utility.hpp>
-#include "vcs.h"
+#include "vcsdata.h"
 
 using namespace std;
-using namespace boost;
-
-//==========================================================================>>
-// Detects whether a directory is CVS-controlled
-//==========================================================================>>
-
-bool IsCvsDir( const string& sDir )
-{
-    return ::GetFileAttributes( CatPath( sDir.c_str(), "CVS\\Entries" ).c_str() ) != (DWORD)-1;
-}
 
 //==========================================================================>>
 // Detects whether a file is locally modified
@@ -58,61 +48,47 @@ bool IsFileModified( const FILETIME &ftLastWriteTime, string sCvsTimestamp )
 // Encapsulates the information on a CVS directory
 //==========================================================================>>
 
-class CvsData : public VcsData, private noncopyable
+class CvsData : public VcsData<CvsData>
 {
 public:
-    explicit CvsData( const std::string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles ) :
-        m_bValid( false ),
-        m_sDir( sDir ),
-        m_cTagType( 0 ),
-        m_bEntriesLoaded( false ),
-        m_DirtyDirs( DirtyDirs ),
-        m_OutdatedFiles( OutdatedFiles )
+    explicit CvsData( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles ) :
+        VcsData( sDir, DirtyDirs, OutdatedFiles )
     {
-        if ( !IsCvsDir( sDir ) )
-            return;
-        m_bValid = true;
-        ReadTagFile( sDir, m_cTagType, m_sTag );
+        char cTagType;
+        string sTag;
+
+        if ( ReadTagFile( sDir, cTagType, sTag ) )
+            setTag( sTag.c_str() );
     }
 
-    const VcsEntries& entries() const { return LazyLoadEntries(); }
-    VcsEntries& entries()             { return LazyLoadEntries(); }
-    const char *getTag() const { return m_sTag.c_str(); }
-    const char *getDir() const { return m_sDir.c_str(); }
-
-    bool IsValid() const { return m_bValid; }
+    static const char *GetAdminDirName() { return "CVS"; }
+    static const bool IsVcsDir( const string& sDir ) { return ::GetFileAttributes( CatPath( sDir.c_str(), "CVS\\Entries" ).c_str() ) != (DWORD)-1; }
+    
     void self_destroy() { delete this; }
 
-private:
-    bool m_bValid;
-
-    std::string m_sDir;     // The CVS-controlled directory
-    char        m_cTagType; // First character of the 'Tag' file
-    std::string m_sTag;     // First line of the 'Tag' file without the first character
-
-    TSFileSet& m_DirtyDirs;
-    const TSFileSet& m_OutdatedFiles;
-
-    mutable VcsEntries m_Entries;  // Merged 'Entries' and 'Entries.Log' files
-    mutable bool m_bEntriesLoaded;
-
-    VcsEntries& LazyLoadEntries() const
+protected:
+    void GetVcsEntriesOnly() const
     {
-        if ( m_bValid && !m_bEntriesLoaded )  // ToDo: Add synchronization to eliminate potential thread-safety issue
-        {
-            ReadEntriesFile( false );
-            ReadEntriesFile( true );
-            FillStatuses();
-            m_bEntriesLoaded = true;
-        }
-
-        return m_Entries;
+        m_Entries.clear();
+        ReadEntriesFile( false );
+        ReadEntriesFile( true );
     }
 
-    void FillStatuses() const;
+    void AdjustVcsEntry( VcsEntry& entry, const WIN32_FIND_DATA& findData ) const
+    {
+        string sFullPathName = CatPath( getDir(), findData.cFileName );
 
+        entry.status = strcmp( entry.sRevision.c_str(), "0" ) == 0                  ? fsAdded    :
+                       entry.sRevision.c_str()[0] == '-'                            ? fsRemoved  :
+                       entry.sTimestamp.find_first_of( "+" ) != string::npos        ? fsConflict :
+                       IsFileModified( findData.ftLastWriteTime, entry.sTimestamp ) ? fsModified :
+                       m_OutdatedFiles.ContainsEntry( sFullPathName )               ? fsOutdated :
+                                                                                      fsNormal;
+    }
+
+private:
     bool ReadEntriesFile( bool bEntriesLog ) const;
-    bool ReadTagFile( const std::string& sDir, char& cTagType, std::string& sTag );
+    bool ReadTagFile( const string& sDir, char& cTagType, string& sTag );
 };
 
 //==========================================================================>>
@@ -125,7 +101,7 @@ bool CvsData::ReadEntriesFile( bool bEntriesLog ) const
 
     const char *szEntriesFile = bEntriesLog ? "CVS\\Entries.Log" : "CVS\\Entries";
 
-    ifstream fEntries( CatPath(m_sDir.c_str(),szEntriesFile).c_str() );
+    ifstream fEntries( CatPath(getDir(),szEntriesFile).c_str() );
 
     if ( !fEntries )
         return false;
@@ -181,70 +157,10 @@ bool CvsData::ReadEntriesFile( bool bEntriesLog ) const
 }
 
 //==========================================================================>>
-// Fill in the file statuses
-//==========================================================================>>
-
-void CvsData::FillStatuses() const
-{
-    bool bDirtyFilesExist = false;
-
-    for ( dir_iterator p(m_sDir,true); p != dir_iterator(); ++p )
-    {
-        VcsEntries::iterator pEntry = m_Entries.find( p->cFileName );
-        
-        if ( pEntry == m_Entries.end() )
-        {
-            if ( strcmp( p->cFileName, "." ) == 0 )
-                continue;
-
-            if ( strcmp( p->cFileName, "CVS" ) != 0 )
-                m_Entries.insert( make_pair( p->cFileName, VcsEntry( p->cFileName, *p ) ) );
-            else
-                m_Entries.insert( make_pair( p->cFileName, VcsEntry( p->cFileName, *p, fsNormal ) ) );
-
-            continue;
-        }
-
-        VcsEntry& entry = pEntry->second;
-        string sFullPathName = CatPath( m_sDir.c_str(), p->cFileName );
-
-        assert( entry.status == fsGhost );
-
-        entry.fileFindData = *p;
-
-        entry.status = strcmp( entry.sRevision.c_str(), "0" ) == 0            ? fsAdded    :
-                       entry.sRevision.c_str()[0] == '-'                      ? fsRemoved  :
-                       entry.sTimestamp.find_first_of( "+" ) != string::npos  ? fsConflict :
-                       IsFileModified( p->ftLastWriteTime, entry.sTimestamp ) ? fsModified :
-                       m_OutdatedFiles.ContainsEntry( sFullPathName )         ? fsOutdated :
-                                                                                fsNormal;
-        bDirtyFilesExist |= IsFileDirty( entry.status );
-    }
-
-    // Add as "added in repository" the files/directories that are in outdated files but not existing locally
-    // and not mentioned by CVS
-
-    for ( TSFileSet::const_iterator p = m_OutdatedFiles.begin(); p != m_OutdatedFiles.end(); ++p )
-    {
-        string sFileName = ExtractFileName( *p );
-
-        if ( IsFileFromDir()(*p,m_sDir.c_str()) && m_Entries.find(sFileName) == m_Entries.end() )
-            m_Entries.insert( make_pair( sFileName, VcsEntry(false,sFileName,"","","",m_sTag,fsAddedRepo) ) );
-    }
-
-    // Add/remove the current directory in the list of the directories containing dirty files
-
-    if ( bDirtyFilesExist )
-        m_DirtyDirs.Add( m_sDir.c_str() );
-    else
-        m_DirtyDirs.Remove( m_sDir.c_str() );
-}
-
-//==========================================================================>>
 // Reads 'Tag' file
 //==========================================================================>>
 
-bool CvsData::ReadTagFile( const std::string& sDir, char& cTagType, std::string& sTag )
+bool CvsData::ReadTagFile( const string& sDir, char& cTagType, string& sTag )
 {
     cTagType = 0;
     sTag.clear();
@@ -271,12 +187,12 @@ bool CvsData::ReadTagFile( const std::string& sDir, char& cTagType, std::string&
     return true;
 }
 
-extern "C" __declspec(dllexport) bool IsPluginDir( const std::string& sDir )
+extern "C" __declspec(dllexport) bool IsPluginDir( const string& sDir )
 {
-    return IsCvsDir( sDir );
+    return CvsData::IsVcsDir( sDir );
 }
 
-extern "C" __declspec(dllexport) VcsData *GetPluginDirData( const string& sDir, TSFileSet& DirtyDirs, const TSFileSet& OutdatedFiles )
+extern "C" __declspec(dllexport) IVcsData *GetPluginDirData( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles )
 {
     return new CvsData( sDir, DirtyDirs, OutdatedFiles );
 }

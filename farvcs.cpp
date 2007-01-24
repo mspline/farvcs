@@ -399,7 +399,7 @@ private:
             if ( !IsVcsDir( sDir ) )
                 return true;
 
-            boost::intrusive_ptr<VcsData> apVcsData = GetVcsData( sDir );
+            boost::intrusive_ptr<IVcsData> apVcsData = GetVcsData( sDir );
 
             // Enumerate all the entries in the current directory
 
@@ -890,7 +890,7 @@ int VcsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
 {
     // Read the VCS data (does nothing if not in a VCS-controlled directory)
 
-    boost::intrusive_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
+    boost::intrusive_ptr<IVcsData> apVcsData = GetVcsData( szCurDir );
 
     // Enumerate all the file entries in the current directory
 
@@ -1130,7 +1130,7 @@ int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
     }
     else if ( bAltShift && (Key == VK_F3 || Key == VK_F4) ) // Alt+Shift+F3 or Alt+Shift+F4
     {
-        boost::intrusive_ptr<VcsData> apVcsData = GetVcsData( szCurDir );
+        boost::intrusive_ptr<IVcsData> apVcsData = GetVcsData( szCurDir );
 
         if ( !apVcsData || !apVcsData->IsValid() || !IsVcsFile(pi.PanelItems[pi.CurrentItem].FindData,*apVcsData) && !OutdatedFiles.ContainsEntry(szCurFile) )
             return FALSE;
