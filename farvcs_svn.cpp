@@ -67,7 +67,7 @@ private:
     void FillStatuses() const;
 };
 
-VcsData::VcsEntries& SvnData::LazyLoadEntries() const
+VcsEntries& SvnData::LazyLoadEntries() const
 {
     if ( m_bValid && !m_bEntriesLoaded )  // ToDo: Add synchronization to eliminate potential thread-safety issue
     {
@@ -79,7 +79,7 @@ VcsData::VcsEntries& SvnData::LazyLoadEntries() const
     return m_Entries;
 }
 
-VcsData::VcsEntries g_Entries;
+VcsEntries g_Entries;
 const char *g_szDir;
 
 void svn_wc_status_callback( void *, const char *path, svn_wc_status2_t *status )

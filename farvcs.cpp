@@ -905,7 +905,7 @@ int VcsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
 
     if ( apVcsData && apVcsData->IsValid() )
     {
-        for ( VcsData::VcsEntries::iterator p = apVcsData->entries().begin(); p != apVcsData->entries().end(); ++p )
+        for ( VcsEntries::iterator p = apVcsData->entries().begin(); p != apVcsData->entries().end(); ++p )
         {
             memset( &pi, 0, sizeof PluginPanelItem );
             pi.FindData = p->second.fileFindData;
@@ -966,7 +966,7 @@ int VcsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
             if ( (pinfo.PanelItems[i].Flags & PPIF_SELECTED) == 0 )
                 continue;
 
-            VcsData::VcsEntries::const_iterator p = apVcsData->entries().find( ExtractFileName( pinfo.PanelItems[i].FindData.cFileName ) );
+            VcsEntries::const_iterator p = apVcsData->entries().find( ExtractFileName( pinfo.PanelItems[i].FindData.cFileName ) );
 
             if ( p == apVcsData->entries().end() )
                 continue;

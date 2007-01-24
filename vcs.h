@@ -92,12 +92,10 @@ struct VcsEntry
 // Encapsulates the information on a VCS directory
 //==========================================================================>>
 
-class VcsData : public ref_countable<VcsData>
-{
-public:
-    typedef std::map<std::string,VcsEntry,LessNoCase> VcsEntries;
+typedef std::map<std::string,VcsEntry,LessNoCase> VcsEntries;
 
-public:
+struct VcsData : public ref_countable<VcsData>
+{
     virtual const VcsEntries& entries() const = 0;
     virtual VcsEntries& entries() = 0;
     virtual bool IsValid() const = 0;
@@ -127,7 +125,7 @@ inline bool IsFileDirty( EVcsStatus fs )
 
 inline bool IsFileDirty( const WIN32_FIND_DATA& findData, const VcsData& vcsData )
 {
-    VcsData::VcsEntries::const_iterator p = vcsData.entries().find( ExtractFileName(findData.cFileName).c_str() );
+    VcsEntries::const_iterator p = vcsData.entries().find( ExtractFileName(findData.cFileName).c_str() );
     return p != vcsData.entries().end() ? IsFileDirty(p->second.status) : false;
 }
 
@@ -139,7 +137,7 @@ inline bool IsVcsFile( EVcsStatus fs )
 
 inline bool IsVcsFile( const WIN32_FIND_DATA& findData, const VcsData& vcsData )
 {
-    VcsData::VcsEntries::const_iterator p = vcsData.entries().find( ExtractFileName(findData.cFileName).c_str() );
+    VcsEntries::const_iterator p = vcsData.entries().find( ExtractFileName(findData.cFileName).c_str() );
     return p != vcsData.entries().end() ? IsVcsFile(p->second.status) : false;
 }
 
