@@ -8,7 +8,11 @@
 // These are the backreferences that must be defined in the main plugin module
 
 extern HINSTANCE hInstance;
+extern HINSTANCE hResInst;             // Where to load the resources from. May differ from hInstance for second-level plugins
 extern PluginStartupInfo StartupInfo;
+extern FarStandardFunctions FSF;
+
+extern const char *cszPluginName;
 
 // Utility functions
 
