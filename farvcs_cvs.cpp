@@ -11,9 +11,18 @@
 #include <fstream>
 #include <time.h>
 #include <boost/utility.hpp>
+#include <boost/function.hpp>
+#include "longop.h"
 #include "vcsdata.h"
 
 using namespace std;
+using namespace boost;
+
+PluginStartupInfo StartupInfo;
+FarStandardFunctions FSF;
+HINSTANCE hResInst;
+
+string sPluginName;
 
 //==========================================================================>>
 // Detects whether a file is locally modified
@@ -48,8 +57,12 @@ bool IsFileModified( const FILETIME &ftLastWriteTime, string sCvsTimestamp )
 // Encapsulates the information on a CVS directory
 //==========================================================================>>
 
+struct CvsUpProcessor;
+
 class CvsData : public VcsData<CvsData>
 {
+    friend struct CvsUpProcessor;
+
 public:
     explicit CvsData( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles ) :
         VcsData( sDir, DirtyDirs, OutdatedFiles )
@@ -65,6 +78,9 @@ public:
     static const bool IsVcsDir( const string& sDir ) { return ::GetFileAttributes( CatPath( sDir.c_str(), "CVS\\Entries" ).c_str() ) != (DWORD)-1; }
     
     void self_destroy() { delete this; }
+
+    bool UpdateStatus( bool bLocal );
+    bool Update( bool bLocal );
 
 protected:
     void GetVcsEntriesOnly() const
@@ -187,6 +203,71 @@ bool CvsData::ReadTagFile( const string& sDir, char& cTagType, string& sTag )
     return true;
 }
 
+struct CvsUpProcessor
+{
+    CvsUpProcessor( CvsData& cvsData, bool bReal ) :
+        m_pCvsData( &cvsData ),
+        m_bReal( bReal )
+    {}
+
+    void operator()( char *sz )
+    {
+        if ( ::strlen(sz) > 1 && (sz[0] == 'U' || sz[0] == 'P') && sz[1] == ' ' )
+        {
+            for ( char *p = sz+2; *p; ++p )
+                if ( *p == '/' )
+                    *p = '\\';
+
+            if ( m_bReal )
+                m_pCvsData->m_OutdatedFiles.Remove( CatPath( m_pCvsData->getDir(), sz+2 ) );
+            else
+                m_pCvsData->m_OutdatedFiles.Add( CatPath( m_pCvsData->getDir(), sz+2 ) );
+        }
+    }
+
+    CvsData *m_pCvsData;
+    bool m_bReal;
+};
+
+std::string GetGlobalFlags()
+{
+    return sformat( " -z%d", 9 /* !!! m_VcsPlugin.Settings.nCompressionLevel*/ );
+}
+
+bool CvsData::UpdateStatus( bool bLocal )
+{
+    string sGlobalFlags = GetGlobalFlags() + " -n";
+    string sCommandFlags = bLocal ? " -l" : "";
+
+    string sCmdLine = sformat( "cvs%s up%s", sGlobalFlags.c_str(), sCommandFlags.c_str() );
+
+    return Executor( sPluginName.c_str(), getDir(), sCmdLine, &function<void(char*)>(CvsUpProcessor(*this,false)) ).Execute();
+}
+
+bool CvsData::Update( bool bLocal )
+{
+    string sGlobalFlags = GetGlobalFlags();
+    string sCommandFlags = bLocal ? " -l" : "";
+
+    string sCmdLine = sformat( "cvs%s up%s", sGlobalFlags.c_str(), sCommandFlags.c_str() );
+
+    return Executor( sPluginName.c_str(), getDir(), sCmdLine, &function<void(char*)>(CvsUpProcessor(*this,true)) ).Execute();
+}
+
+//==========================================================================>>
+// Second level plugin interface
+//==========================================================================>>
+
+extern "C" __declspec(dllexport) void Initialize( PluginStartupInfo& startupInfo, const char *szPluginName, HINSTANCE hHostInst )
+{
+    ::StartupInfo = startupInfo;
+    FSF = *startupInfo.FSF;
+    ::StartupInfo.FSF = &FSF;
+    hResInst = hHostInst;
+
+    sPluginName = string(szPluginName) + "/CVS";
+}
+
 extern "C" __declspec(dllexport) bool IsPluginDir( const string& sDir )
 {
     return CvsData::IsVcsDir( sDir );
@@ -196,3 +277,4 @@ extern "C" __declspec(dllexport) IVcsData *GetPluginDirData( const string& sDir,
 {
     return new CvsData( sDir, DirtyDirs, OutdatedFiles );
 }
+
