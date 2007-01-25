@@ -28,12 +28,12 @@ void ParseLngResource( vector<string>& vsMsgs )
 
     // Get the FARLANG resource
 
-    HRSRC hLangRes = ::FindResource( hInstance, MAKEINTRESOURCE(1), "FARLANG" );
+    HRSRC hLangRes = ::FindResource( hResInst, MAKEINTRESOURCE(1), "FARLANG" );
 
     if ( hLangRes == 0 )
         return;
 
-    HGLOBAL hGlobal = ::LoadResource( hInstance, hLangRes );
+    HGLOBAL hGlobal = ::LoadResource( hResInst, hLangRes );
     if ( hGlobal == 0 )
         return;
 
@@ -41,7 +41,7 @@ void ParseLngResource( vector<string>& vsMsgs )
     if ( pLangRes == 0 )
         return;
 
-    unsigned long dwSize = ::SizeofResource( hInstance, hLangRes );
+    unsigned long dwSize = ::SizeofResource( hResInst, hLangRes );
     if ( dwSize == 0 )
         return;
 
