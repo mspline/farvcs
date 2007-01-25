@@ -64,6 +64,8 @@ template <typename D> VcsEntries& VcsData<D>::LazyLoadEntries() const
     if ( !m_bValid || m_bEntriesLoaded )
         return m_Entries;
 
+    m_bEntriesLoaded = true; // Do that immediately to prevent infinite recursion
+
     GetVcsEntriesOnly();
 
     bool bDirtyFilesExist = false;
@@ -110,7 +112,6 @@ template <typename D> VcsEntries& VcsData<D>::LazyLoadEntries() const
     else
         m_DirtyDirs.Remove( m_sDir.c_str() );
 
-    m_bEntriesLoaded = true;
     return m_Entries;
 }
 
