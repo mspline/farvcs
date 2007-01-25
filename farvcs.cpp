@@ -26,6 +26,7 @@
 #include "vcs.h"
 #include "regwrap.h"
 #include "enforce.h"
+#include "traverse.h"
 #include "lang.h"
 
 using namespace std;
@@ -38,12 +39,14 @@ using namespace boost;
 PluginStartupInfo StartupInfo;
 FarStandardFunctions FSF;
 HINSTANCE hInstance;           // The DLL module handle
+HINSTANCE hResInst;            // Where to load the resources from
 
-char cszPluginName[] = "VCS Assistant";
+const char *cszPluginName = "VCS Assistant";
+
 char cszDllName[]    = "farvcs.dll";
 char cszCacheFile[]  = "farvcs.csh";
 
-char *PluginMenuStrings[] = { cszPluginName };
+char *PluginMenuStrings[] = { const_cast<char*>( cszPluginName ) };
 
 // The static vars are used to avoid multiple allocations of two-byte blocks in GetFindData
 
@@ -74,7 +77,7 @@ TSFileSet OutdatedFiles;
 BOOL WINAPI DllMain( HINSTANCE hInstDll, DWORD dwReason, LPVOID )
 {
     if ( dwReason == DLL_PROCESS_ATTACH )
-        hInstance = hInstDll;
+        hInstance = hResInst = hInstDll;
 
     return TRUE;
 }
@@ -83,7 +86,7 @@ BOOL WINAPI DllMain( HINSTANCE hInstDll, DWORD dwReason, LPVOID )
 // The VCS plugin proper
 //==========================================================================>>
 
-class VcsPlugin
+class VcsPlugin : private noncopyable
 {
 public:
     struct PluginSettings
@@ -201,9 +204,6 @@ public:
     static void StopMonitoringThread() { MonitoringThread.Stop( 1000 ); }
 
 private:
-    VcsPlugin( const VcsPlugin& );
-    VcsPlugin& operator=( const VcsPlugin& );
-
     char szCurDir[MAX_PATH];
 
     char szItemToStart[MAX_PATH]; // Where to position the cursor when starting
@@ -230,362 +230,6 @@ private:
 
     static Thread MonitoringThread;
     static unsigned int MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTerminateEvent);
-
-private:
-    class LongOperation
-    {
-    public:
-        LongOperation( const VcsPlugin *pVcsPlugin ) : m_pVcsPlugin( pVcsPlugin ), m_hDlg( 0 ) {}
-        virtual ~LongOperation() {}
-
-        bool Execute()
-        {
-            vector<InitDialogItem> InitItems;
-            RECT r;
-
-            DoGetDlg( r, InitItems );
-            if ( InitItems.empty() )
-                return false;
-
-            vector<FarDialogItem> DialogItems( InitItems.size()+1 ); // Far crashes when using just InitItems.size()
-            InitDialogItems( &InitItems[0], &DialogItems[0], InitItems.size() );
-
-            return StartupInfo.DialogEx( StartupInfo.ModuleNumber, r.left, r.top, r.right, r.bottom, 0, &DialogItems[0], DialogItems.size(), 0, 0, DlgProc, reinterpret_cast<long>( this ) ) != 0;
-        }
-
-    protected:
-        const VcsPlugin *GetVcsPlugin() { return m_pVcsPlugin; }
-        HANDLE GetDlg() { return m_hDlg; }
-
-        virtual void DoGetDlg( RECT& r, vector<InitDialogItem>& vInitItems ) = 0;
-        virtual bool DoExecute() = 0;
-
-        const VcsPlugin *m_pVcsPlugin;
-        HANDLE m_hDlg;
-
-    private:
-        static long WINAPI DlgProc( HANDLE hDlg, int Msg, int Param1, long Param2 )
-        {
-            static LongOperation *pThis;
-
-            if ( Msg == DN_INITDIALOG )
-            {
-                pThis = reinterpret_cast<LongOperation *>( Param2 );
-                pThis->m_hDlg = hDlg;
-            }
-            else if ( Msg == DN_ENTERIDLE )
-            {
-                bool bResult = false;
-                
-                try
-                {
-                    bResult = pThis->DoExecute();
-                }
-                catch( runtime_error& e )
-                {
-                    MsgBoxWarning( cszPluginName, e.what() );
-                }
-
-                StartupInfo.SendDlgMessage( hDlg, DM_CLOSE, bResult ? 1 : 0, 0 );
-            }
-
-            return StartupInfo.DefDlgProc( hDlg, Msg, Param1, Param2 );
-        }
-    };
-
-    class SimpleLongOperation : public LongOperation
-    {
-    public:
-        SimpleLongOperation( const VcsPlugin *pVcsPlugin ) : LongOperation( pVcsPlugin ), dwLastUserInteraction(0) {}
-
-    protected:
-        virtual void DoGetDlg( RECT& r, vector<InitDialogItem>& vInitItems )
-        {
-            static char szProgressBg[W+1];
-            ::memset( szProgressBg, 0xB0, sizeof szProgressBg-1 );
-
-            unsigned long dwPromptId = DoGetPrompt();
-            const char *szPrompt = (dwPromptId > 1000) ? reinterpret_cast<const char*>(dwPromptId) : GetMsg(dwPromptId);
-
-            InitDialogItem InitItems[] =
-            {
-                /* 0 */ { DI_DOUBLEBOX, 3,1,W+6,5,  0,0, 0, 0, cszPluginName                           },
-                /* 1 */ { DI_TEXT,      5,2,0,0,    0,0, 0, 0, const_cast<char*>( szPrompt )           },
-                /* 2 */ { DI_TEXT,      5,3,0,0,    0,0, 0, 0, const_cast<char*>( DoGetInitialInfo() ) },
-                /* 3 */ { DI_TEXT,      5,4,0,0,    0,0, 0, 0, const_cast<char*>( szProgressBg )       }
-            };
-
-            vInitItems.clear();
-            vInitItems.assign( InitItems, InitItems+array_size(InitItems) );
-
-            r.left = -1;
-            r.top = -1;
-            r.right = W+10;
-            r.bottom = 7;
-        }
-
-        bool Interaction( const char *szCurrentPath, int percentage, bool bForce = false )
-        {
-            // Updating UI and processing the user input are time-consuming
-            // operations. We don't want to to that too often
-
-            if ( !bForce && ::GetTickCount() - dwLastUserInteraction < 100 )
-                return false;
-
-            dwLastUserInteraction = ::GetTickCount();
-                
-            static char szBackground[W+1];
-            ::memset( szBackground, ' ', sizeof szBackground );
-
-            static char szProgress[W+1];
-            ::memset( szProgress, 0xDB, sizeof szProgress );
-
-            szProgress[W*(min(max(percentage,0),100))/100] = 0;
-
-            char szText[MAX_PATH];
-            array_strcpy( szText, szCurrentPath );
-            FSF.TruncPathStr( szText, W );
-
-            FarDialogItemData background = { W, szBackground };
-            FarDialogItemData text       = { strlen(szText), szText };
-            FarDialogItemData progress   = { strlen(szProgress), szProgress };
-
-            StartupInfo.SendDlgMessage( GetDlg(), DM_SETTEXT, 2, (long)&background );
-            StartupInfo.SendDlgMessage( GetDlg(), DM_SETTEXT, 2, (long)&text );
-            StartupInfo.SendDlgMessage( GetDlg(), DM_SETTEXT, 3, (long)&progress );
-
-            return CheckForEsc();
-        }
-
-        virtual unsigned long DoGetPrompt() = 0;
-        virtual const char *DoGetInitialInfo() = 0;
-
-    protected:
-        static const int W = 56; // Progress bar width
-
-        DWORD dwLastUserInteraction;  // Tracks the time of the last user interaction
-    };
-
-    //--------------------------------------------------------------------------->
-    // Traverses the file system tree looking for dirty files and filling in
-    // the DirtyDirs container.
-    // Returns false if the traverse was cancelled or an error occured.
-    //--------------------------------------------------------------------------->
-
-    class Traversal : public SimpleLongOperation
-    {
-    public:
-        Traversal( VcsPlugin *pVcsPlugin ) : SimpleLongOperation( pVcsPlugin ) {}
-
-    protected:
-        virtual unsigned long DoGetPrompt() { return M_Traversing; }
-        virtual const char *DoGetInitialInfo() { return GetVcsPlugin()->szCurDir; }
-
-        virtual bool DoExecute()
-        {
-            static int cnPreCountedDepth = 2;
-            int nPreCountedDirs = CountVcsDirs( GetVcsPlugin()->szCurDir, cnPreCountedDepth );
-
-            int nCountedDirs = 0; // Tracks the number of the visited directories above a given level
-
-            return Traverse( GetVcsPlugin()->szCurDir, nPreCountedDirs, cnPreCountedDepth, 0, nCountedDirs );
-        }
-
-    private:
-        bool Traverse( const string& sDir, int nPreCountedDirs, int nPreCountedDepth, int nLevel, int& nCountedDirs )
-        {
-            // Read the VCS data (does nothing if not in a VCS-controlled directory)
-
-            if ( !IsVcsDir( sDir ) )
-                return true;
-
-            boost::intrusive_ptr<IVcsData> apVcsData = GetVcsData( sDir );
-
-            // Enumerate all the entries in the current directory
-
-            bool bDirtyFilesExist = false;
-            bool bRetValue = true;
-
-            for ( dir_iterator p(sDir); p != dir_iterator(); ++p )
-            {
-                bDirtyFilesExist |= IsFileDirty( *p, *apVcsData );
-
-                string sPathName = CatPath( sDir.c_str(), p->cFileName );
-
-                if ( (p->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && IsVcsDir(sPathName) )
-                {
-                    if ( nLevel < nPreCountedDepth )
-                        ++nCountedDirs;
-
-                    if ( Interaction( sPathName.c_str(), nCountedDirs*100/nPreCountedDirs ) && (bRetValue = false, true) )
-                        break;
-
-                    bRetValue = Traverse( sPathName.c_str(), nPreCountedDirs, nPreCountedDepth, nLevel+1, nCountedDirs );
-
-                    if ( !bRetValue )
-                        break;
-                }
-            }
-
-            if ( bDirtyFilesExist )
-                DirtyDirs.Add( sDir );
-            else
-                DirtyDirs.Remove( sDir );
-
-            return bRetValue;
-        }
-    };
-
-    class Executor : public SimpleLongOperation
-    {
-    public:
-        Executor( const VcsPlugin *pVcsPlugin, const char *szCmdLine, const function<void(char*)>* const pf = 0, const char *szTmpFile = 0 ) :
-            SimpleLongOperation( pVcsPlugin ),
-            sCmdLine( szCmdLine ),
-            pfNewLineCallback( pf ),
-            sTempFileName( szTmpFile ? szTmpFile : "" ),
-            sPrompt( sformat( "%s>%s", pVcsPlugin->szCurDir, szCmdLine ) )
-        {}
-
-    protected:
-        virtual unsigned long DoGetPrompt() { return reinterpret_cast<unsigned long>( sPrompt.c_str() ); }
-
-        virtual const char *DoGetInitialInfo() { return GetMsg(M_Starting); }
-
-        virtual bool DoExecute()
-        {
-            string sPipeName = GetTempPipeName();
-
-            SECURITY_ATTRIBUTES sa = { sizeof sa, 0, TRUE };
-            const unsigned long cdwPipeBufferSize = 1024;
-
-            // We have to use named pipe solely because unnamed pipes don't support
-            // asynchronous operations
-
-            W32Handle HReadPipe = ENF_H( ::CreateNamedPipe( sPipeName.c_str(),
-                                                            PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
-                                                            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
-                                                            1,
-                                                            cdwPipeBufferSize,
-                                                            cdwPipeBufferSize,
-                                                            500,
-                                                            0 ) );
-
-            W32Handle HWritePipe( ENF_H( ::CreateFile( sPipeName.c_str(), GENERIC_WRITE, 0, &sa, OPEN_EXISTING, 0, 0 ) ) );
-
-            W32Handle HProcess = ExecuteConsoleNoWait( m_pVcsPlugin->szCurDir,
-                                                       sCmdLine.c_str(),
-                                                       HWritePipe,
-                                                       sTempFileName.empty() ? HWritePipe : 0 );
-            HWritePipe.Close();
-
-            if ( !HProcess )
-            {
-                MsgBoxWarning( cszPluginName, "Cannot execute external application:\n%s\n%s", sCmdLine.c_str(), LastErrorStr().c_str() );
-                return false;
-            }
-
-            W32Handle HTempFile = !sTempFileName.empty() ? ENF_H( ::CreateFile( sTempFileName.c_str(), GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0 ) )
-                                                         : INVALID_HANDLE_VALUE;
-
-            if ( !HTempFile && !sTempFileName.empty() )
-            {
-                MsgBoxWarning( cszPluginName, "Cannot create temporary file:\n%s\n%s", sTempFileName.c_str(), LastErrorStr().c_str() );
-                return false;
-            }
-
-            char buf[cdwPipeBufferSize];
-            DWORD dwRead = 0;
-            DWORD dwWritten;
-
-            W32Event oe;
-            OVERLAPPED o = { 0, 0, 0, 0, oe };
-
-            unsigned long nr = 0;       // Number of lines read
-            bool bIoPending = false;    // Overlapped IO is in progress
-            char szLine[4096] = "";     // Current line is collected here
-            char szLastLine[4096] = ""; // Used only to display progress
-
-            for ( ; ; )
-            {
-                if ( !bIoPending && !::ReadFile( HReadPipe, buf, sizeof buf, &dwRead, &o ) )
-                {
-                    if ( ::GetLastError() == ERROR_BROKEN_PIPE )
-                        break;
-                    else if ( ENF( ::GetLastError() == ERROR_IO_PENDING ) )
-                        bIoPending = true;
-                }
-
-                if ( bIoPending && ::WaitForSingleObjectEx( oe, 1000, TRUE ) == WAIT_OBJECT_0 )
-                {
-                    bIoPending = false;
-
-                    if ( !::GetOverlappedResult( HReadPipe, &o, &dwRead, FALSE ) && ENF( ::GetLastError() == ERROR_BROKEN_PIPE ) )
-                        break;
-                }
-
-                if ( Interaction( szLastLine, 100 ) )
-                {
-                    ::TerminateProcess( HProcess, (UINT)-1 );
-                    return false;
-                }
-
-                if ( bIoPending )
-                    continue;
-
-                if ( HTempFile.IsValid() )
-                    ENF( ::WriteFile( HTempFile, buf, dwRead, &dwWritten, 0 ) );
-
-                if ( dwRead > 0 )
-                {
-                    for ( char *p = buf; ; )
-                    {
-                        char *pNextEOL = find( p, buf+dwRead, '\n' );
-                        
-                        if ( pNextEOL > buf && pNextEOL < buf+dwRead && pNextEOL[-1] == '\r' )
-                            pNextEOL[-1] = 0;
-
-                        array_strncat( szLine, p, pNextEOL-p );
-
-                        if ( pNextEOL == buf+dwRead )
-                            break;
-
-                        if ( pfNewLineCallback )
-                            (*pfNewLineCallback)( szLine );
-
-                        array_strcpy( szLastLine, szLine );
-                        *szLine = 0;
-
-                        p = pNextEOL+1;
-                    }
-                }
-
-                nr += count( buf, buf+dwRead, '\n' );
-            }
-
-            if ( *szLine != 0 )
-            {
-                (*pfNewLineCallback)( szLine );
-                array_strcpy( szLastLine, szLine );
-                *szLine = 0;
-            }
-
-            Interaction( szLastLine, 100, true ); // So that the dialog blinks with the latest data before dying
-            SleepEx( 100, TRUE );                 // To increase the probability of latest data appearing onscreen
-
-            ENF( ::WaitForSingleObjectEx( HProcess, INFINITE, TRUE ) == WAIT_OBJECT_0 );
-            
-            DWORD dwExitCode;
-            ENF( ::GetExitCodeProcess( HProcess, (LPDWORD)&dwExitCode ) );
-
-            return dwExitCode == 0;
-        }
-
-        string sCmdLine;
-        string sTempFileName;
-        const function<void(char*)>* pfNewLineCallback;
-        string sPrompt;
-    };
 };
 
 //==========================================================================>>
@@ -706,7 +350,7 @@ int WINAPI _export Configure( int /*ItemNumber*/ )
 
     InitDialogItem InitItems[] =
     {
-        /* 0 */ { DI_DOUBLEBOX, 3,1,52,7,  0,0, 0,                            0, cszPluginName                                   },
+        /* 0 */ { DI_DOUBLEBOX, 3,1,52,7,  0,0, 0,                            0, const_cast<char*>( cszPluginName )              },
         /* 1 */ { DI_CHECKBOX,  5,2,0,0,   0,0, 0,                            0, const_cast<char*>( GetMsg( M_AutomaticMode ) )  },
         /* 2 */ { DI_TEXT,      5,3,0,0,   0,0, DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""                                              },
         /* 3 */ { DI_FIXEDIT,   6,4,6,4,   0,0, 0,                            0, ""                                              },
@@ -827,7 +471,7 @@ void VcsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, c
                    fs == fsRemoved   ? 'R' :
                    fs == fsConflict  ? 'C' :
                    fs == fsModified  ? 'M' :
-                   fs == fsOutdated  ? 'u' :
+                   fs == fsOutdated  ? '*' :
                    fs == fsNonVcs    ? '?' :
                    fs == fsAddedRepo ? 'a' :
                    fs == fsGhost     ? '!' :
@@ -1110,7 +754,7 @@ int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
     }
     else if ( bCtrl && Key == 'R' ) // Ctrl+R
     {
-        Traversal( this ).Execute();
+        Traversal( cszPluginName, szCurDir ).Execute();
         ::Cache.Save();
         return FALSE;
     }
@@ -1139,8 +783,9 @@ int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
 
         try
         {
-            if ( !Executor( this,
-                            (string("cvs annotate ") + ExtractFileName(szCurFile)).c_str(),
+            if ( !Executor( cszPluginName,
+                            szCurDir,
+                            string("cvs annotate ") + ExtractFileName(szCurFile),
                             0,
                             tempFile.GetName().c_str() ).Execute() )
                 return FALSE;
@@ -1167,58 +812,25 @@ int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
     }
     else if ( (bCtrlAlt || bCtrlShift) && (Key == VK_F5 || Key == VK_F6) ) // Alt/Ctrl + Shift + F5/F6
     {
-        struct CvsUpProcessor
-        {
-            CvsUpProcessor( const VcsPlugin& vcsPlugin, TSFileSet& outdatedFiles, bool bReal ) : pVcsPlugin_(&vcsPlugin), pOutdatedFiles_(&outdatedFiles), bReal_(bReal) {}
-
-            void operator()( char *sz )
-            {
-                if ( ::strlen(sz) > 1 && (sz[0] == 'U' || sz[0] == 'P') && sz[1] == ' ' )
-                {
-                    for ( char *p = sz+2; *p; ++p )
-                        if ( *p == '/' )
-                            *p = '\\';
-
-                    if ( bReal_ )
-                        pOutdatedFiles_->Remove( CatPath( pVcsPlugin_->szCurDir, sz+2 ) );
-                    else
-                        pOutdatedFiles_->Add( CatPath( pVcsPlugin_->szCurDir, sz+2 ) );
-                }
-            }
-
-            const VcsPlugin *pVcsPlugin_;
-            TSFileSet *pOutdatedFiles_;
-            bool bReal_;
-        };
+        boost::intrusive_ptr<IVcsData> apVcsData = GetVcsData( szCurDir );
 
         bool bLocal = bCtrlAlt;
-        bool bReal  = Key == VK_F6;
 
-        if ( bLocal )
-            OutdatedFiles.RemoveFilesOfDir( szCurDir );
-        else
-            OutdatedFiles.RemoveFilesDownDir( szCurDir );
-
-        string sGlobalFlags;
-        string sCommandFlags;
-
-        if ( Settings.nCompressionLevel != 0 )
-            sGlobalFlags += sformat( " -z%d", Settings.nCompressionLevel );
-
-        if ( !bReal )
-            sGlobalFlags += " -n";
-
-        if ( bLocal )
-            sCommandFlags += " -l";
-
-        string sCmdLine = sformat( "cvs%s up%s", sGlobalFlags.c_str(), sCommandFlags.c_str() );
-
-        if ( Executor( this, sCmdLine.c_str(), &function<void(char*)>(CvsUpProcessor(*this,OutdatedFiles,bReal)) ).Execute() )
+        if ( Key == VK_F5 )
         {
-            if ( !bLocal )
-                Traversal( this ).Execute();
-            ::Cache.Save();
+            OutdatedFiles.RemoveFilesOfDir( szCurDir, !bLocal );
+            apVcsData->UpdateStatus( bLocal );
         }
+        else
+        {
+            if ( apVcsData->Update( bLocal ) )
+                OutdatedFiles.RemoveFilesOfDir( szCurDir, !bLocal );
+        }
+
+        if ( !bLocal )
+            Traversal( cszPluginName, szCurDir ).Execute();
+
+        ::Cache.Save();
 
         StartupInfo.Control( this, FCTL_UPDATEPANEL, 0 );
         StartupInfo.Control( this, FCTL_REDRAWPANEL, 0 );
@@ -1345,3 +957,4 @@ unsigned int VcsPlugin::MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTer
         ::WriteConsoleInput( hConsoleInput, recs, array_size(recs), &dwWritten );
     }
 }
+
