@@ -276,31 +276,31 @@ private:
 // as it is used in projects with static and dynamic runtimes
 //==========================================================================>>
 
-inline std::string CatPath( const char *szCurDir, const char *szSubDir )
+inline std::string CatPath( const char *szDir, const char *szSubDir )
 {
-    if ( szCurDir == 0 || *szCurDir == 0 )
+    if ( szDir == 0 || *szDir == 0 )
         return "";
     else if ( szSubDir == 0 || *szSubDir == 0 )
-        return szCurDir;
+        return szDir;
     else if ( szSubDir[1] == ':' )
         return szSubDir;
     else if ( strchr( "\\/", *szSubDir ) != 0 )
-        return szCurDir[1] == ':' ? std::string(szCurDir,2) + szSubDir : szSubDir;
+        return szDir[1] == ':' ? std::string(szDir,2) + szSubDir : szSubDir;
     else if ( strcmp( szSubDir, ".." ) == 0 )
     {
-        const char *p = szCurDir + strlen(szCurDir) - 1;
-        if ( strchr( "\\/", *p ) != 0 && p > szCurDir && *(p-1) != ':' )
+        const char *p = szDir + strlen(szDir) - 1;
+        if ( strchr( "\\/", *p ) != 0 && p > szDir && *(p-1) != ':' )
             --p;
-        while ( p >= szCurDir && strchr( "\\/", *p ) == 0 )
+        while ( p >= szDir && strchr( "\\/", *p ) == 0 )
             --p;
 
-        return p < szCurDir                   ? szCurDir :
-               p == szCurDir || *(p-1) == ':' ? std::string( szCurDir, p+1-szCurDir ) :
-                                                std::string( szCurDir, p-szCurDir );
+        return p < szDir                   ? szDir :
+               p == szDir || *(p-1) == ':' ? std::string( szDir, p+1-szDir ) :
+                                             std::string( szDir, p-szDir );
     }
     else
     {
-        std::string sNewDir = szCurDir;
+        std::string sNewDir( szDir );
         if ( !sNewDir.empty() && strchr( "\\/:", *sNewDir.rbegin() ) == 0 )
             sNewDir += "\\";
         return sNewDir + szSubDir;
