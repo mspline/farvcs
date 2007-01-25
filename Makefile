@@ -28,7 +28,8 @@ install : farvcs.dll farvcs_cvs.dll farvcs_svn.dll
 clean :
 	rm -f *.obj *.map *.lib *.pdb *.exp *.[Rr][Ee][Ss] *.dll *.manifest *.user
 
-OBJFILES_CVS = farvcs_cvs.obj miscutil.obj
+LIBS_CVS = advapi32.lib
+OBJFILES_CVS = farvcs_cvs.obj miscutil.obj plugutil.obj regwrap.obj
 
 farvcs_cvs.dll : ${OBJFILES_CVS}
 	link -out:$@ -debug -dll -incremental:no ${OBJFILES_CVS} ${LIBS_CVS}
