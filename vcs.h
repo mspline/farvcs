@@ -108,6 +108,9 @@ struct IVcsData : public ref_countable<IVcsData>
 
     void ref_countable_self_destroy() { self_destroy(); } // Statically polymorphic, called from ref_countable
     virtual void self_destroy() = 0;                      // Dynamically polymorphic, overridden in descendants
+
+    virtual bool UpdateStatus( bool bLocal ) = 0;
+    virtual bool Update( bool bLocal ) = 0;
 };
 
 bool IsVcsDir( const std::string& sDir );
