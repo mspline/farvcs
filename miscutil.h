@@ -221,9 +221,17 @@ public:
     void Remove( const std::string& sFile )              { CSGuard _(cs); cont.erase(sFile); }
     bool ContainsEntry( const std::string& sFile ) const { CSGuard _(cs); return std::find_if( cont.begin(), cont.end(), std::bind2nd(EqualNoCase(),sFile) ) != cont.end(); }
     bool ContainsDown( const std::string& sDir ) const   { CSGuard _(cs); return std::find_if( cont.begin(), cont.end(), std::bind2nd(StartsWithDir(),sDir) ) != cont.end(); }
-    void RemoveFilesOfDir( const std::string& sDir )     { CSGuard _(cs); cont.erase( std::remove_if( cont.begin(), cont.end(), std::bind2nd(IsFileFromDir(),sDir) ), cont.end() ); }
-    void RemoveFilesDownDir( const std::string& sDir )   { CSGuard _(cs); cont.erase( std::remove_if( cont.begin(), cont.end(), std::bind2nd(StartsWithDir(),sDir) ), cont.end() ); }
     void Merge( const TSFileSet& rhs )                   { CSGuard _(cs); cont.insert( rhs.cont.begin(), rhs.cont.end() ); }
+
+    void RemoveFilesOfDir( const std::string& sDir, bool bRecursive )
+    {
+        CSGuard _(cs);
+
+        if ( bRecursive )
+            cont.erase( std::remove_if( cont.begin(), cont.end(), std::bind2nd(StartsWithDir(),sDir) ), cont.end() );
+        else
+            cont.erase( std::remove_if( cont.begin(), cont.end(), std::bind2nd(IsFileFromDir(),sDir) ), cont.end() );
+    }
 
 private:
     std::set<std::string> cont;
