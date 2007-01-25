@@ -43,21 +43,19 @@ class PluginDll : private noncopyable
 public:
     PluginDll( const char *szDllName )
     {
-        Log( "hInstance: 0x%08x", hInstance );
-
         string sDllPathName = CatPath( ExtractPath(GetModuleFileName(hInstance)).c_str(), szDllName );
         m_hModule = ::LoadLibrary( sDllPathName.c_str() );
         
         if ( m_hModule == 0 )
             return;
 
-        Initialize       = (void (*)())::GetProcAddress( m_hModule, "Initialize" );
+        Initialize       = (void (*)( PluginStartupInfo& StartupInfo, const char *cszPluginName, HINSTANCE hHostInst ))::GetProcAddress( m_hModule, "Initialize" );
         Uninitialize     = (void (*)())::GetProcAddress( m_hModule, "Uninitialize" );
         IsPluginDir      = (bool (*)( const string& sDir ))::GetProcAddress( m_hModule, "IsPluginDir" );
         GetPluginDirData = (IVcsData *(*)( const string& sDir,TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles ))::GetProcAddress( m_hModule, "GetPluginDirData" );
 
         if ( Initialize )
-            Initialize();
+            Initialize( StartupInfo, cszPluginName, hInstance );
     }
 
     virtual ~PluginDll()
@@ -73,7 +71,7 @@ public:
 
     bool IsValid() { return m_hModule != 0; }
 
-    void (*Initialize)();
+    void (*Initialize)( PluginStartupInfo& StartupInfo, const char *cszPluginName, HINSTANCE hHostInst );
     void (*Uninitialize)();
     bool (*IsPluginDir)( const string& sDir );
     IVcsData *(*GetPluginDirData)( const string& sDir, TSFileSet& DirtyDirs, TSFileSet& OutdatedFiles );
