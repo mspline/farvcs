@@ -42,6 +42,7 @@ public:
 
     bool UpdateStatus( bool bLocal );
     bool Update( bool ) { return false; }
+    bool Annotate( const string& /*sFileName*/, const string& /*sTempFile*/ ) { return false; }
 
     // Public Morozov pattern below :)
 

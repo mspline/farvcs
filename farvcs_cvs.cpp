@@ -81,6 +81,7 @@ public:
 
     bool UpdateStatus( bool bLocal );
     bool Update( bool bLocal );
+    bool Annotate( const string& sFileName, const string& sTempFile );
 
 protected:
     void GetVcsEntriesOnly() const
@@ -252,6 +253,17 @@ bool CvsData::Update( bool bLocal )
     string sCmdLine = sformat( "cvs%s up%s", sGlobalFlags.c_str(), sCommandFlags.c_str() );
 
     return Executor( sPluginName.c_str(), getDir(), sCmdLine, &function<void(char*)>(CvsUpProcessor(*this,true)) ).Execute();
+}
+
+bool CvsData::Annotate( const string& sFileName, const string& sTmpFile )
+{
+    string sCommandFlags = *getTag() ? sformat( " -r %s", getTag() ) : "";
+
+    return Executor( sPluginName.c_str(),
+                     getDir(),
+                     sformat( "cvs%s annotate%s %s", GetGlobalFlags().c_str(), sCommandFlags.c_str(), ExtractFileName(sFileName.c_str()).c_str() ),
+                     0,
+                     sTmpFile.c_str() ).Execute();
 }
 
 //==========================================================================>>

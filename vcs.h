@@ -111,6 +111,7 @@ struct IVcsData : public ref_countable<IVcsData>
 
     virtual bool UpdateStatus( bool bLocal ) = 0;
     virtual bool Update( bool bLocal ) = 0;
+    virtual bool Annotate( const std::string& sFileName, const std::string& sTempFile ) = 0;
 };
 
 bool IsVcsDir( const std::string& sDir );

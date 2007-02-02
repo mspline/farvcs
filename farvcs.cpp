@@ -781,19 +781,8 @@ int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
 
         TempFile tempFile;
 
-        try
-        {
-            if ( !Executor( cszPluginName,
-                            szCurDir,
-                            string("cvs annotate ") + ExtractFileName(szCurFile),
-                            0,
-                            tempFile.GetName().c_str() ).Execute() )
-                return FALSE;
-        }
-        catch( runtime_error& e )
-        {
-            MsgBoxWarning( cszPluginName, e.what() );
-        }
+        if ( !apVcsData->Annotate( szCurFile, tempFile.GetName() ) )
+            return FALSE;
 
         string sTitle = sformat( "[CVS annotate] %s", szCurFile );
 
