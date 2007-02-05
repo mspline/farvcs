@@ -14,6 +14,7 @@
 #include <vector>
 #include <memory.h>
 #include <windows.h>
+#include "farcolor.hpp"
 #include "enforce.h"
 #include "plugin.hpp"
 #include "miscutil.h"
@@ -47,6 +48,7 @@ protected:
 
     virtual void DoGetDlg( RECT& r, std::vector<InitDialogItem>& vInitItems ) = 0;
     virtual bool DoExecute() = 0;
+    virtual void DrawDlgItem( int /*id*/, FarDialogItem * /*pitem*/ ) {}
 
     const char *m_szPluginName;
     HANDLE m_hDlg;
@@ -75,6 +77,10 @@ private:
             }
 
             StartupInfo.SendDlgMessage( hDlg, DM_CLOSE, bResult ? 1 : 0, 0 );
+        }
+        else if ( Msg == DN_DRAWDLGITEM )
+        {
+            pThis->DrawDlgItem( (int)Param1, (FarDialogItem*)Param2 );
         }
 
         return StartupInfo.DefDlgProc( hDlg, Msg, Param1, Param2 );
@@ -154,11 +160,98 @@ protected:
     DWORD m_dwLastUserInteraction;  // Tracks the time of the last user interaction
 };
 
-class Executor : public SimpleLongOperation
+class ScrollLongOperation : public LongOperation
+{
+public:
+    ScrollLongOperation( const char *szPluginName ) : LongOperation( szPluginName ), m_dwLastUserInteraction(0) {}
+
+protected:
+    virtual void DoGetDlg( RECT& r, std::vector<InitDialogItem>& vInitItems )
+    {
+        static char szProgressBg[W+1];
+
+        static std::vector<CHAR_INFO> VBuf( nMaxConsoleWidth * nMaxConsoleHeight ); // Allocate maximum. Who cares about extra 30kB?
+        WORD outputColor = (WORD)StartupInfo.AdvControl( StartupInfo.ModuleNumber, ACTL_GETCOLOR, (void*)COL_DIALOGBOX );
+
+        for ( unsigned int i = 0; i < VBuf.size(); ++i )
+        {
+            VBuf[i].Char.AsciiChar = ' ';
+            VBuf[i].Attributes = outputColor;
+        }
+
+        unsigned long dwPromptId = DoGetPrompt();
+        const char *szPrompt = (dwPromptId > 1000) ? reinterpret_cast<const char*>(dwPromptId) : GetMsg(dwPromptId);
+
+        InitDialogItem InitItems[] =
+        {
+            /* 0 */ { DI_DOUBLEBOX,   3,   1, 6+W, 6+H, 0,0,                      0, 0, const_cast<char*>( GetPluginName() )    },
+            /* 1 */ { DI_TEXT,        5,   2, 0,     0, 0,0,                      0, 0, const_cast<char*>( szPrompt )           },
+            /* 2 */ { DI_TEXT,        5,   3, 0,     0, 0,0,                      DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""           },
+            /* 3 */ { DI_USERCONTROL, 5,   4, 4+W, 3+H, 0,(unsigned int)&VBuf[0], 0, 0, const_cast<char*>( DoGetInitialInfo() ) },
+            /* 4 */ { DI_TEXT,        5, 4+H, 0,     0, 0,0,                      DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""           },
+            /* 5 */ { DI_TEXT,        5, 5+H, 4+W,   0, 0,0,                      0, 0, const_cast<char*>( szProgressBg )       }
+        };
+
+        vInitItems.clear();
+        vInitItems.assign( InitItems, InitItems+array_size(InitItems) );
+
+        r.left = -1;
+        r.top = -1;
+        r.right = W+10;
+        r.bottom = H+8;
+    }
+
+    void Scroll( const char *szNextLine )
+    {
+        if ( vLines.size() >= H )
+            vLines.erase( vLines.begin() );
+
+        if ( !vLines.empty() || *szNextLine )
+            vLines.push_back( szNextLine );
+    }
+
+    bool Interaction( bool bForce = true )
+    {
+        // Updating UI and processing the user input are time-consuming
+        // operations. We don't want it to happen too often
+
+        if ( !bForce && ::GetTickCount() - m_dwLastUserInteraction < 100 )
+            return false;
+
+        m_dwLastUserInteraction = ::GetTickCount();
+            
+        StartupInfo.SendDlgMessage( GetDlg(), DM_SHOWITEM, 3, 1 );
+        return CheckForEsc();
+    }
+
+    void DrawDlgItem( int id, FarDialogItem *pitem )
+    {
+        if ( id != 3 )
+            return;
+
+        CHAR_INFO *VBuf = pitem->VBuf;
+
+        for ( unsigned int i = 0; i < vLines.size(); ++i )
+            for ( unsigned int j = 0; j < W; ++j )
+                VBuf[i*W+j].Char.AsciiChar = j < vLines[i].length() ? vLines[i][j] : ' ';
+    }
+
+    virtual unsigned long DoGetPrompt() = 0;
+    virtual const char *DoGetInitialInfo() = 0;
+
+protected:
+    static const int W = 56; // Scroll control width
+    static const int H = 13; // Scroll control height
+
+    DWORD m_dwLastUserInteraction;  // Tracks the time of the last user interaction
+    std::vector<std::string> vLines;
+};
+
+class Executor : public ScrollLongOperation
 {
 public:
     Executor( const char *szPluginName, const char *szDir, const std::string& sCmdLine, const boost::function<void(char*)>* const pf = 0, const char *szTmpFile = 0 ) :
-        SimpleLongOperation( szPluginName ),
+        ScrollLongOperation( szPluginName ),
         m_szDir( szDir ),
         m_sCmdLine( sCmdLine ),
         m_pfNewLineCallback( pf ),
@@ -229,7 +322,6 @@ protected:
         unsigned long nr = 0;       // Number of lines read
         bool bIoPending = false;    // Overlapped IO is in progress
         char szLine[4096] = "";     // Current line is collected here
-        char szLastLine[4096] = ""; // Used only to display progress
 
         for ( ; ; )
         {
@@ -249,7 +341,7 @@ protected:
                     break;
             }
 
-            if ( Interaction( szLastLine, 100 ) )
+            if ( Interaction() )
             {
                 ::TerminateProcess( HProcess, (UINT)-1 );
                 return false;
@@ -278,7 +370,7 @@ protected:
                     if ( m_pfNewLineCallback )
                         (*m_pfNewLineCallback)( szLine );
 
-                    array_strcpy( szLastLine, szLine );
+                    Scroll( szLine );
                     *szLine = 0;
 
                     p = pNextEOL+1;
@@ -291,12 +383,12 @@ protected:
         if ( *szLine != 0 )
         {
             (*m_pfNewLineCallback)( szLine );
-            array_strcpy( szLastLine, szLine );
+            Scroll( szLine );
             *szLine = 0;
         }
 
-        Interaction( szLastLine, 100, true ); // So that the dialog blinks with the latest data before dying
-        SleepEx( 100, TRUE );                 // To increase the probability of latest data appearing onscreen
+        Interaction( true );  // So that the dialog blinks with the latest data before dying
+        SleepEx( 100, TRUE ); // To increase the probability of latest data appearing onscreen
 
         ENF( ::WaitForSingleObjectEx( HProcess, INFINITE, TRUE ) == WAIT_OBJECT_0 );
         
