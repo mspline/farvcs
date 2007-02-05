@@ -95,18 +95,18 @@ public:
 protected:
     virtual void DoGetDlg( RECT& r, std::vector<InitDialogItem>& vInitItems )
     {
-        static char szProgressBg[W+1];
-        ::memset( szProgressBg, 0xB0, sizeof szProgressBg-1 );
+        static char szProgressBg[nMaxConsoleWidth];
+        ::memset( szProgressBg, 0xB0, W() );
 
         unsigned long dwPromptId = DoGetPrompt();
         const char *szPrompt = (dwPromptId > 1000) ? reinterpret_cast<const char*>(dwPromptId) : GetMsg(dwPromptId);
 
         InitDialogItem InitItems[] =
         {
-            /* 0 */ { DI_DOUBLEBOX, 3,1,W+6,5,  0,0, 0, 0, const_cast<char*>( GetPluginName() )    },
-            /* 1 */ { DI_TEXT,      5,2,0,0,    0,0, 0, 0, const_cast<char*>( szPrompt )           },
-            /* 2 */ { DI_TEXT,      5,3,0,0,    0,0, 0, 0, const_cast<char*>( DoGetInitialInfo() ) },
-            /* 3 */ { DI_TEXT,      5,4,0,0,    0,0, 0, 0, const_cast<char*>( szProgressBg )       }
+            /* 0 */ { DI_DOUBLEBOX, 3,1,W()+6,5,  0,0, 0, 0, const_cast<char*>( GetPluginName() )    },
+            /* 1 */ { DI_TEXT,      5,2,0,0,      0,0, 0, 0, const_cast<char*>( szPrompt )           },
+            /* 2 */ { DI_TEXT,      5,3,0,0,      0,0, 0, 0, const_cast<char*>( DoGetInitialInfo() ) },
+            /* 3 */ { DI_TEXT,      5,4,0,0,      0,0, 0, 0, const_cast<char*>( szProgressBg )       }
         };
 
         vInitItems.clear();
@@ -114,7 +114,7 @@ protected:
 
         r.left = -1;
         r.top = -1;
-        r.right = W+10;
+        r.right = W()+10;
         r.bottom = 7;
     }
 
@@ -128,19 +128,19 @@ protected:
 
         m_dwLastUserInteraction = ::GetTickCount();
             
-        static char szBackground[W+1];
+        static char szBackground[nMaxConsoleWidth];
         ::memset( szBackground, ' ', sizeof szBackground );
 
-        static char szProgress[W+1];
+        static char szProgress[nMaxConsoleWidth];
         ::memset( szProgress, 0xDB, sizeof szProgress );
 
-        szProgress[W*(min(max(percentage,0),100))/100] = 0;
+        szProgress[W()*min(max(percentage,0),100)/100] = 0;
 
         char szText[MAX_PATH];
         array_strcpy( szText, szCurrentPath );
-        FSF.TruncPathStr( szText, W );
+        FSF.TruncPathStr( szText, W() );
 
-        FarDialogItemData background = { W, szBackground };
+        FarDialogItemData background = { W(), szBackground };
         FarDialogItemData text       = { strlen(szText), szText };
         FarDialogItemData progress   = { strlen(szProgress), szProgress };
 
@@ -151,12 +151,12 @@ protected:
         return CheckForEsc();
     }
 
+    unsigned int W() const { return 66; } // Status line width
+
     virtual unsigned long DoGetPrompt() = 0;
     virtual const char *DoGetInitialInfo() = 0;
 
-protected:
-    static const int W = 56; // Progress bar width
-
+private:
     DWORD m_dwLastUserInteraction;  // Tracks the time of the last user interaction
 };
 
@@ -168,28 +168,22 @@ public:
 protected:
     virtual void DoGetDlg( RECT& r, std::vector<InitDialogItem>& vInitItems )
     {
-        static char szProgressBg[W+1];
-
         static std::vector<CHAR_INFO> VBuf( nMaxConsoleWidth * nMaxConsoleHeight ); // Allocate maximum. Who cares about extra 30kB?
-        WORD outputColor = (WORD)StartupInfo.AdvControl( StartupInfo.ModuleNumber, ACTL_GETCOLOR, (void*)COL_DIALOGBOX );
 
+        CHAR_INFO ciInit = { ' ', (WORD)StartupInfo.AdvControl( StartupInfo.ModuleNumber, ACTL_GETCOLOR, (void*)COL_DIALOGBOX ) };
+        
         for ( unsigned int i = 0; i < VBuf.size(); ++i )
-        {
-            VBuf[i].Char.AsciiChar = ' ';
-            VBuf[i].Attributes = outputColor;
-        }
+            VBuf[i] = ciInit;
 
         unsigned long dwPromptId = DoGetPrompt();
         const char *szPrompt = (dwPromptId > 1000) ? reinterpret_cast<const char*>(dwPromptId) : GetMsg(dwPromptId);
 
         InitDialogItem InitItems[] =
         {
-            /* 0 */ { DI_DOUBLEBOX,   3,   1, 6+W, 6+H, 0,0,                      0, 0, const_cast<char*>( GetPluginName() )    },
-            /* 1 */ { DI_TEXT,        5,   2, 0,     0, 0,0,                      0, 0, const_cast<char*>( szPrompt )           },
-            /* 2 */ { DI_TEXT,        5,   3, 0,     0, 0,0,                      DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""           },
-            /* 3 */ { DI_USERCONTROL, 5,   4, 4+W, 3+H, 0,(unsigned int)&VBuf[0], 0, 0, const_cast<char*>( DoGetInitialInfo() ) },
-            /* 4 */ { DI_TEXT,        5, 4+H, 0,     0, 0,0,                      DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""           },
-            /* 5 */ { DI_TEXT,        5, 5+H, 4+W,   0, 0,0,                      0, 0, const_cast<char*>( szProgressBg )       }
+            /* 0 */ { DI_DOUBLEBOX,   3,   1, W()+6, H()+4, 0,0,                      0, 0, const_cast<char*>( GetPluginName() ) },
+            /* 1 */ { DI_TEXT,        5,   2, 0,     0,     0,0,                      0, 0, const_cast<char*>( szPrompt )        },
+            /* 2 */ { DI_TEXT,        5,   3, 0,     0,     0,0,                      DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""        },
+            /* 3 */ { DI_USERCONTROL, 5,   4, W()+4, H()+3, 0,(unsigned int)&VBuf[0], 0, 0, ""                                   }
         };
 
         vInitItems.clear();
@@ -197,17 +191,17 @@ protected:
 
         r.left = -1;
         r.top = -1;
-        r.right = W+10;
-        r.bottom = H+8;
+        r.right = W()+10;
+        r.bottom = H()+6;
     }
 
     void Scroll( const char *szNextLine )
     {
-        if ( vLines.size() >= H )
+        if ( vLines.size() >= H() )
             vLines.erase( vLines.begin() );
 
         if ( !vLines.empty() || *szNextLine )
-            vLines.push_back( szNextLine );
+            vLines.push_back( ProkrustString(szNextLine,W()) );
     }
 
     bool Interaction( bool bForce = true )
@@ -232,17 +226,17 @@ protected:
         CHAR_INFO *VBuf = pitem->VBuf;
 
         for ( unsigned int i = 0; i < vLines.size(); ++i )
-            for ( unsigned int j = 0; j < W; ++j )
-                VBuf[i*W+j].Char.AsciiChar = j < vLines[i].length() ? vLines[i][j] : ' ';
+            for ( unsigned int j = 0; j < W(); ++j )
+                VBuf[i*W()+j].Char.AsciiChar = vLines[i][j];
     }
 
     virtual unsigned long DoGetPrompt() = 0;
-    virtual const char *DoGetInitialInfo() = 0;
 
 protected:
-    static const int W = 56; // Scroll control width
-    static const int H = 13; // Scroll control height
+    unsigned int W() const { static unsigned int W = GetConsoleSize().X*4/5; return W; } // Scroll control width
+    unsigned int H() const { static unsigned int H = GetConsoleSize().Y*2/3; return H; } // Scroll control height
 
+private:
     DWORD m_dwLastUserInteraction;  // Tracks the time of the last user interaction
     std::vector<std::string> vLines;
 };
@@ -255,20 +249,12 @@ public:
         m_szDir( szDir ),
         m_sCmdLine( sCmdLine ),
         m_pfNewLineCallback( pf ),
-        m_sTempFileName( szTmpFile ? szTmpFile : "" )
-    {
-        // All this is only for perfectionism, it could be just like
-        // m_sPrompt = sformat( "%s>%s", szDir, sCmdLine.c_str() );
-
-        std::string sEllipsis( "..." );
-        m_sPrompt = sCmdLine.length() >= W ? sCmdLine.substr( 0, W-sEllipsis.length()-1 ) + sEllipsis
-                                           : sCmdLine;
-    }
+        m_sTempFileName( szTmpFile ? szTmpFile : "" ),
+        m_sPrompt( ProkrustString( sCmdLine, W() ) )
+    {}
 
 protected:
     virtual unsigned long DoGetPrompt() { return reinterpret_cast<unsigned long>( m_sPrompt.c_str() ); }
-
-    virtual const char *DoGetInitialInfo() { return GetMsg(M_Starting); }
 
     virtual bool DoExecute()
     {

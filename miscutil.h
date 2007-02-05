@@ -167,6 +167,37 @@ struct EqualNoCase : public std::binary_function<std::string, std::string, bool>
     }
 };
 
+inline std::string sformat( const char *szFormat, ... )
+{
+    va_list args;
+    char szBuf[4096];
+
+    va_start( args, szFormat );
+    size_t len = _vsnprintf( szBuf, array_size(szBuf)-1, szFormat, args );
+    szBuf[len] = 0;
+
+    return szBuf;
+}
+
+//==========================================================================>>
+// Truncate string for formatted output, adding trailing "..."
+//==========================================================================>>
+
+inline std::string ProkrustString( const std::string& sVictim, std::string::size_type len )
+{
+    std::string s( sVictim );
+
+    if ( s.length() > len )
+    {
+        static const char cszHellipsis[] = "...";
+        s.erase( len-array_size(cszHellipsis)+1 ) += cszHellipsis;
+    }
+    else if ( s.length() < len )
+        s += sformat( "%*c", len-s.length(), ' ' );
+
+    return s;
+}
+
 //==========================================================================>>
 // Critical section wrapper and guard
 //==========================================================================>>
@@ -334,6 +365,16 @@ inline std::string ExtractPath( const std::string& sPathName )
     return iLastSlash == std::string::npos ? "" : sPathName.substr( 0, iLastSlash );
 }
 
+inline std::string QuoteIfNecessary( std::string sFileName )
+{
+    if ( sFileName.find_first_of( ' ' ) != std::string::npos ) {
+        sFileName.insert( 0, "\"" );
+        sFileName += '\"';
+    }
+
+    return sFileName;
+}
+
 //==========================================================================>>
 // STL-compliant iterator wrapper around ::FindFirstFile/::FindNextFile
 //==========================================================================>>
@@ -466,28 +507,6 @@ inline std::string GetCurrentDirectory()
         throw std::runtime_error( "::GetCurrentDirectory returns path that is too long" );
     else
         throw std::runtime_error( "::GetCurrentDirectory failed" );
-}
-
-inline std::string QuoteIfNecessary( std::string sFileName )
-{
-    if ( sFileName.find_first_of( ' ' ) != std::string::npos ) {
-        sFileName.insert( 0, "\"" );
-        sFileName += '\"';
-    }
-
-    return sFileName;
-}
-
-inline std::string sformat( const char *szFormat, ... )
-{
-    va_list args;
-    char szBuf[4096];
-
-    va_start( args, szFormat );
-    size_t len = _vsnprintf( szBuf, array_size(szBuf)-1, szFormat, args );
-    szBuf[len] = 0;
-
-    return szBuf;
 }
 
 inline std::string GetTempPipeName()

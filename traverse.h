@@ -24,7 +24,7 @@ protected:
     virtual const char *DoGetInitialInfo()
     {
         array_strcpy( m_szTruncatedDir, m_szDir );
-        FSF.TruncPathStr( m_szTruncatedDir, W );
+        FSF.TruncPathStr( m_szTruncatedDir, W() );
         return m_szTruncatedDir;
     }
 

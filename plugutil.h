@@ -24,7 +24,7 @@ const char *GetMsg( int nMsgId );
 struct InitDialogItem
 {
     unsigned char Type;
-    unsigned char X1,Y1,X2,Y2;
+    unsigned int X1,Y1,X2,Y2;
     unsigned char Focus;
     unsigned int Selected;
     unsigned int Flags;
@@ -69,6 +69,29 @@ inline void MsgBoxWarning( const char *szTitle, const char *szFormat, ... )
                          (const char * const *)szBuf,
                          0,   // Items number
                          0 ); // Buttons number
+}
+
+//==========================================================================>>
+// Getting FAR window size
+//==========================================================================>>
+
+inline COORD GetConsoleSize()
+{
+    COORD coord = { 0, 0 };
+
+    HANDLE hConsoleOutput = ::GetStdHandle( STD_OUTPUT_HANDLE );
+
+    if ( !hConsoleOutput )
+        return coord;
+
+    CONSOLE_SCREEN_BUFFER_INFO screenBufInfo;
+    if ( !::GetConsoleScreenBufferInfo( hConsoleOutput, &screenBufInfo ) )
+        return coord;
+
+    coord.X = screenBufInfo.dwSize.X;
+    coord.Y = screenBufInfo.dwSize.Y;
+
+    return coord;
 }
 
 #endif // __PLUGUTIL_H
