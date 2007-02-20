@@ -68,30 +68,16 @@ template <typename D> VcsEntries& VcsData<D>::LazyLoadEntries() const
 
     GetVcsEntriesOnly();
 
-    bool bDirtyFilesExist = false;
-
     for ( dir_iterator p(m_sDir,true); p != dir_iterator(); ++p )
     {
         VcsEntries::iterator pEntry = m_Entries.find( p->cFileName );
         
-        if ( pEntry == m_Entries.end() )
-        {
-            if ( strcmp( p->cFileName, "." ) == 0 )
-                continue;
-
-            if ( strcmp( p->cFileName, D::GetAdminDirName() ) != 0 )
-                m_Entries.insert( make_pair( p->cFileName, VcsEntry( p->cFileName, *p ) ) );
-            else
-                m_Entries.insert( make_pair( p->cFileName, VcsEntry( p->cFileName, *p, fsNormal ) ) );
-
-            continue;
-        }
-
-        pEntry->second.fileFindData = *p;
-
-        AdjustVcsEntry( pEntry->second, *p );
-
-        bDirtyFilesExist |= IsFileDirty( pEntry->second.status );
+        if ( pEntry != m_Entries.end() )
+            AdjustVcsEntry( pEntry->second, pEntry->second.fileFindData = *p );
+        else
+            if ( strcmp( p->cFileName, "." ) != 0 )
+                m_Entries.insert( make_pair( p->cFileName,
+                                             VcsEntry( p->cFileName, *p, strcmp(p->cFileName,D::GetAdminDirName()) == 0 ? fsNormal : fsNonVcs ) ) );
     }
 
     // Add as "added in repository" the files/directories that are in outdated files but not existing locally
@@ -106,6 +92,11 @@ template <typename D> VcsEntries& VcsData<D>::LazyLoadEntries() const
     }
 
     // Add/remove the current directory in the list of the directories containing dirty files
+
+    bool bDirtyFilesExist = false;
+    
+    for ( VcsEntries::const_iterator pEntry = m_Entries.begin(); pEntry != m_Entries.end() && !bDirtyFilesExist; ++pEntry )
+    	bDirtyFilesExist |= IsFileDirty( pEntry->second.status );
 
     if ( bDirtyFilesExist )
         m_DirtyDirs.Add( m_sDir.c_str() );

@@ -53,13 +53,16 @@ private:
         bool bDirtyFilesExist = false;
         bool bRetValue = true;
 
-        for ( dir_iterator p(sDir); p != dir_iterator(); ++p )
+        for ( VcsEntries::const_iterator pEntry = apVcsData->entries().begin(); pEntry != apVcsData->entries().end(); ++pEntry )
         {
-            bDirtyFilesExist |= IsFileDirty( *p, *apVcsData );
+            if ( pEntry->first == ".." )
+                continue;
 
-            std::string sPathName = CatPath( sDir.c_str(), p->cFileName );
+            bDirtyFilesExist |= IsFileDirty( pEntry->second.status );
 
-            if ( (p->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && IsVcsDir(sPathName) )
+            std::string sPathName = CatPath( sDir.c_str(), pEntry->first.c_str() );
+
+            if ( (pEntry->second.fileFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && IsVcsDir(sPathName) )
             {
                 if ( nLevel < nPreCountedDepth )
                     ++nCountedDirs;

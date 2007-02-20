@@ -165,7 +165,7 @@ bool CvsData::ReadEntriesFile( bool bEntriesLog ) const
             continue;
 
         if ( !bRemoveEntry )
-            m_Entries.insert( make_pair( vFields[0], VcsEntry( bDir, vFields, fsGhost ) ) );
+            m_Entries.insert( make_pair( vFields[0], VcsEntry( bDir, vFields, vFields[1][0] == '-' ? fsRemoved : fsGhost ) ) );
         else
             m_Entries.erase( vFields[0] );
     }
