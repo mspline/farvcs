@@ -13,25 +13,25 @@ LIBS += advapi32.lib shell32.lib
                 CXXRT = -MT
 farvcs_svn.obj: CXXRT = -MD
 
-farvcs.dll : farvcs_cvs.dll farvcs_svn.dll ${OBJFILES} ${RESFILES} ${DEFFILE} farvcs_en.lng
+farvcs.dll : farvcs_cvs.vcs farvcs_svn.vcs ${OBJFILES} ${RESFILES} ${DEFFILE} farvcs_en.lng
 	link -out:$@ -debug -dll -incremental:no -def:${DEFFILE} ${OBJFILES} ${RESFILES} ${LIBS}
 
-install : farvcs.dll farvcs_cvs.dll farvcs_svn.dll
+install : farvcs.dll farvcs_cvs.vcs farvcs_svn.vcs
 	mkdir -p "${PROGRAMFILES}/Far/Plugins/FarVCS"
 	pskill far.exe
 	sleep 4
 	cp -p farvcs.dll "${PROGRAMFILES}/Far/Plugins/FarVCS"
-	cp -p farvcs_cvs.dll "${PROGRAMFILES}/Far/Plugins/FarVCS"
-	cp -p farvcs_svn.dll "${PROGRAMFILES}/Far/Plugins/FarVCS"
+	cp -p farvcs_cvs.vcs "${PROGRAMFILES}/Far/Plugins/FarVCS"
+	cp -p farvcs_svn.vcs "${PROGRAMFILES}/Far/Plugins/FarVCS"
 	"${PROGRAMFILES}/Far/Far.exe"
 
 clean :
-	rm -f *.obj *.map *.lib *.pdb *.exp *.[Rr][Ee][Ss] *.dll *.manifest *.user
+	rm -f *.obj *.map *.lib *.pdb *.exp *.[Rr][Ee][Ss] *.dll *.vcs *.manifest *.user
 
 LIBS_CVS = advapi32.lib
 OBJFILES_CVS = farvcs_cvs.obj miscutil.obj plugutil.obj regwrap.obj
 
-farvcs_cvs.dll : ${OBJFILES_CVS}
+farvcs_cvs.vcs : ${OBJFILES_CVS}
 	link -out:$@ -debug -dll -incremental:no ${OBJFILES_CVS} ${LIBS_CVS}
 
 LIBS_SVN += advapi32.lib shell32.lib kernel32.lib ws2_32.lib
@@ -41,6 +41,6 @@ LIBS_SVN += libsvn_subr-1.lib libsvn_wc-1.lib libapr.lib libaprutil.lib xml.lib 
 
 OBJFILES_SVN = farvcs_svn.obj
 
-farvcs_svn.dll : ${OBJFILES_SVN}
+farvcs_svn.vcs : ${OBJFILES_SVN}
 	link -out:$@  -debug -dll -incremental:no ${OBJFILES_SVN} ${LIBS_SVN} | grep -v LNK4099
 	mt -manifest $@.manifest -outputresource:"$@;#2"

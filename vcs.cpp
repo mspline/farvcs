@@ -86,9 +86,9 @@ PluginDll *Plugins()
 {
     static PluginDll plugins[] =
     {
-        PluginDll( "farvcs_cvs.dll" ),
-        PluginDll( "farvcs_svn.dll" ),
-        PluginDll( "farvcs_p4.dll" )
+        PluginDll( "farvcs_cvs.vcs" ),
+        PluginDll( "farvcs_svn.vcs" ),
+        PluginDll( "farvcs_p4.vcs" )
     };
 
     return plugins;
