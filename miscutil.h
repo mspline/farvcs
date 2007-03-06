@@ -576,8 +576,10 @@ class TempFile
 public:
     TempFile() : sFileName(GetTempFileName()) {}
     explicit TempFile( const char *szFileName ) : sFileName(szFileName) {}
-    TempFile( TempFile& rhs ) : sFileName(rhs.Detach()) {}
-    TempFile& operator=( TempFile& rhs ) { TempFile tmp(rhs); swap(tmp); return *this; }
+
+    TempFile( const TempFile& rhs ) : sFileName( const_cast<TempFile&>(rhs).Detach() ) {}      // Deliberate hack
+    TempFile& operator=( const TempFile& rhs ) { TempFile tmp(rhs); swap(tmp); return *this; } // Here too
+
     ~TempFile() { Delete(); } // Yes, not virtual
 
     bool IsValid()        const { return !sFileName.empty(); }
