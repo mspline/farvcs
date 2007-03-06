@@ -230,6 +230,8 @@ private:
 
     static Thread MonitoringThread;
     static unsigned int MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTerminateEvent);
+
+    vector<TempFile> TempFiles;
 };
 
 //==========================================================================>>
@@ -684,6 +686,9 @@ int VcsPlugin::ProcessEvent( int Event, void * /*Param*/ )
 
 int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
 {
+    if ( Key & PKF_PREPROCESS )
+        return FALSE;
+
     // Check if we are on a file panel of a plugin
 
     PanelInfo pi;
@@ -823,6 +828,31 @@ int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
 
         StartupInfo.Control( this, FCTL_UPDATEPANEL, 0 );
         StartupInfo.Control( this, FCTL_REDRAWPANEL, 0 );
+
+        return TRUE;
+    }
+    else if ( bCtrl && Key == VK_OEM_PLUS ) // Ctrl+=
+    {
+        boost::intrusive_ptr<IVcsData> apVcsData = GetVcsData( szCurDir );
+
+        if ( !apVcsData || !apVcsData->IsValid() || !IsVcsFile(pi.PanelItems[pi.CurrentItem].FindData,*apVcsData) )
+            return FALSE;
+
+        VcsEntries::const_iterator p = apVcsData->entries().find( ExtractFileName(szCurFile).c_str() );
+
+        if ( p == apVcsData->entries().end() || p->second.sRevision.empty() )
+            return FALSE;
+            
+        TempFile tempFile( sformat( "%s_%s", CatPath(GetTempPath().c_str(),ExtractFileName(szCurFile).c_str()).c_str(), p->second.sRevision.c_str() ).c_str() );
+
+        if ( !apVcsData->GetRevisionTemp( szCurFile, p->second.sRevision, tempFile.GetName() ) )
+            return FALSE;
+
+        W32Handle( ExecuteConsoleNoWait( szCurDir,
+                                         sformat("merge.exe %s %s", QuoteIfNecessary(tempFile.GetName()).c_str(), QuoteIfNecessary(szCurFile).c_str()).c_str(),
+                                         0, 0 ) );
+
+        TempFiles.push_back( tempFile );
 
         return TRUE;
     }
