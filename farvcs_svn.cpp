@@ -43,6 +43,8 @@ public:
     bool UpdateStatus( bool bLocal );
     bool Update( bool ) { return false; }
     bool Annotate( const string& /*sFileName*/, const string& /*sTempFile*/ ) { return false; }
+    bool GetRevisionTemp( const string& /*sFileName*/, const string& /*sRevision*/, const string& /*sTempFile*/ ) { return false; }
+    bool Status( const std::string& /*sFileName*/, std::string& /*sWorkingRevision*/ ) { return false; }
 
     // Public Morozov pattern below :)
 

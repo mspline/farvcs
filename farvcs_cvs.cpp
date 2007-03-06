@@ -82,6 +82,8 @@ public:
     bool UpdateStatus( bool bLocal );
     bool Update( bool bLocal );
     bool Annotate( const string& sFileName, const string& sTempFile );
+    bool Status( const string& sFileName, string& sWorkingRevision );
+    bool GetRevisionTemp( const string& sFileName, const string& sRevision, const string& sTempFile );
 
 protected:
     void GetVcsEntriesOnly() const
@@ -204,6 +206,15 @@ bool CvsData::ReadTagFile( const string& sDir, char& cTagType, string& sTag )
     return true;
 }
 
+std::string GetGlobalFlags()
+{
+    return sformat( " -z%d", 9 /* !!! m_VcsPlugin.Settings.nCompressionLevel*/ );
+}
+
+//==========================================================================>>
+// Update/Update status
+//==========================================================================>>
+
 struct CvsUpProcessor
 {
     CvsUpProcessor( CvsData& cvsData, bool bReal ) :
@@ -230,11 +241,6 @@ struct CvsUpProcessor
     bool m_bReal;
 };
 
-std::string GetGlobalFlags()
-{
-    return sformat( " -z%d", 9 /* !!! m_VcsPlugin.Settings.nCompressionLevel*/ );
-}
-
 bool CvsData::UpdateStatus( bool bLocal )
 {
     string sGlobalFlags = GetGlobalFlags() + " -n";
@@ -255,6 +261,10 @@ bool CvsData::Update( bool bLocal )
     return Executor( sPluginName.c_str(), getDir(), sCmdLine, &function<void(char*)>(CvsUpProcessor(*this,true)) ).Execute();
 }
 
+//==========================================================================>>
+// Annotate
+//==========================================================================>>
+
 bool CvsData::Annotate( const string& sFileName, const string& sTmpFile )
 {
     string sCommandFlags = *getTag() ? sformat( " -r %s", getTag() ) : "";
@@ -262,6 +272,61 @@ bool CvsData::Annotate( const string& sFileName, const string& sTmpFile )
     return Executor( sPluginName.c_str(),
                      getDir(),
                      sformat( "cvs%s annotate%s %s", GetGlobalFlags().c_str(), sCommandFlags.c_str(), ExtractFileName(sFileName.c_str()).c_str() ),
+                     0,
+                     sTmpFile.c_str() ).Execute();
+}
+
+//==========================================================================>>
+// Status
+//==========================================================================>>
+
+struct CvsStatusProcessor
+{
+    CvsStatusProcessor( string& sWorkingRevision ) :
+        m_psWorkingRevision( &sWorkingRevision )
+    {}
+
+    void operator()( char *sz )
+    {
+        static const char cszWorkingRevision[] = "Working revision:";
+
+        const char *p = ::strstr( sz, cszWorkingRevision );
+
+        if ( p == 0 )
+            return;
+
+        for ( p += sizeof cszWorkingRevision/sizeof *cszWorkingRevision-1; isspace(*p); ++p );
+
+        if ( *p == 0 )
+            return;
+
+        const char *szStart = p;
+
+        for ( ; *p && !isspace(*p); ++p );
+
+        *m_psWorkingRevision = string( szStart, p-szStart );
+    }
+
+    string *m_psWorkingRevision;
+};
+
+bool CvsData::Status( const string& sFileName, string& sWorkingRevision )
+{
+    return Executor( sPluginName.c_str(),
+                     getDir(),
+                     sformat( "cvs%s status %s", GetGlobalFlags().c_str(), ExtractFileName(sFileName.c_str()).c_str() ),
+                     &function<void(char*)>(CvsStatusProcessor(sWorkingRevision)) ).Execute();
+}
+
+//==========================================================================>>
+// GetRevisionTemp
+//==========================================================================>>
+
+bool CvsData::GetRevisionTemp( const string& sFileName, const string& sRevision, const string& sTmpFile )
+{
+    return Executor( sPluginName.c_str(),
+                     getDir(),
+                     sformat( "cvs%s up -r %s -p %s", GetGlobalFlags().c_str(), sRevision.c_str(), ExtractFileName(sFileName.c_str()).c_str() ),
                      0,
                      sTmpFile.c_str() ).Execute();
 }
