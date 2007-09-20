@@ -163,6 +163,12 @@ public:
         ColumnTitles3[3] = const_cast<char*>( GetMsg( M_ColumnOpt ) );
         ColumnTitles3[4] = const_cast<char*>( GetMsg( M_ColumnTags ) );
 
+        ColumnTitles4[0] = const_cast<char*>( GetMsg( M_ColumnName ) );
+        ColumnTitles4[1] = const_cast<char*>( GetMsg( M_ColumnS ) );
+        ColumnTitles4[2] = const_cast<char*>( GetMsg( M_ColumnRev ) );
+        ColumnTitles4[3] = const_cast<char*>( GetMsg( M_ColumnOpt ) );
+        ColumnTitles4[4] = const_cast<char*>( GetMsg( M_ColumnTags ) );
+
         ::memset( PanelModesArray, 0, sizeof PanelModesArray );
 
         PanelModesArray[1].ColumnTypes = "NO,C0,NO,C0,NO,C0";
@@ -189,6 +195,14 @@ public:
         PanelModesArray[3].FullScreen = FALSE;
         PanelModesArray[3].StatusColumnTypes = "NOR,S,D,T";
         PanelModesArray[3].StatusColumnWidths = "0,6,0,5";
+
+        PanelModesArray[4].ColumnTypes = "NO,C0,C1,C2,C3";
+        array_sprintf( szColumnWidths4, "0,1,%d,%d,0", nRevColumnWidth, nOptColumnWidth );
+        PanelModesArray[4].ColumnWidths = szColumnWidths4;
+        PanelModesArray[4].ColumnTitles = ColumnTitles4;
+        PanelModesArray[4].FullScreen = FALSE;
+        PanelModesArray[4].StatusColumnTypes = "NOR,S,D,T";
+        PanelModesArray[4].StatusColumnWidths = "0,6,0,5";
     }
 
     void GetOpenPluginInfo( OpenPluginInfo *pInfo );
@@ -215,10 +229,12 @@ private:
     char *ColumnTitles1[6];
     char *ColumnTitles2[4];
     char *ColumnTitles3[5];
+    char *ColumnTitles4[5];
 
     char szColumnWidths1[30];
     char szColumnWidths2[30];
     char szColumnWidths3[30];
+    char szColumnWidths4[30];
 
     PanelMode PanelModesArray[10];
 
