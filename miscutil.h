@@ -137,8 +137,8 @@ struct StartsWithDir : public std::binary_function<std::string, std::string, boo
 {
     result_type operator()( const first_argument_type& str, const second_argument_type& substr ) const
     {
-        return str.compare(0,substr.length(),substr) == 0 &&
-               (str.length() == substr.length() || strchr( "\\/:", str[substr.length()] ) != 0 );
+        return _strnicmp( str.c_str(), substr.c_str(), substr.length() ) == 0 &&
+               (str.length() == substr.length() || strchr( "\\/:", str[substr.length()] ) != 0);
     }
 };
 
@@ -146,7 +146,7 @@ struct IsFileFromDir : public std::binary_function<std::string, std::string, boo
 {
     result_type operator()( const first_argument_type& str, const second_argument_type& substr ) const
     {
-        return str.compare(0,substr.length(),substr) == 0 &&
+        return _strnicmp( str.c_str(), substr.c_str(), substr.length() ) == 0 &&
                str.find_last_of( "\\/:" ) == substr.length();
     }
 };
@@ -253,6 +253,7 @@ public:
     bool ContainsEntry( const std::string& sFile ) const { CSGuard _(cs); return std::find_if( cont.begin(), cont.end(), std::bind2nd(EqualNoCase(),sFile) ) != cont.end(); }
     bool ContainsDown( const std::string& sDir ) const   { CSGuard _(cs); return std::find_if( cont.begin(), cont.end(), std::bind2nd(StartsWithDir(),sDir) ) != cont.end(); }
     void Merge( const TSFileSet& rhs )                   { CSGuard _(cs); cont.insert( rhs.cont.begin(), rhs.cont.end() ); }
+    void Clear()                                         { CSGuard _(cs); cont.clear(); }
 
     void RemoveFilesOfDir( const std::string& sDir, bool bRecursive )
     {

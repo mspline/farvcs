@@ -126,7 +126,7 @@ void svn_wc_status_callback( void *status_baton, const char *path, svn_wc_status
                                                                         fsBogus;
     if ( !pcb->bUpdateStatus )
         pcb->pSvnData->m_Entries.insert( make_pair( szFileName,
-                                                    VcsEntry( false, 
+                                                    VcsEntry( status->entry && status->entry->kind == svn_node_dir, 
                                                               szFileName,
                                                               status->entry ? l2s(status->entry->revision) : "",
                                                               "",

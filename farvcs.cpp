@@ -116,10 +116,18 @@ public:
             if ( !is )
                 return;
 
-            boost::archive::text_iarchive ia( is );
+            try
+            {
+                boost::archive::text_iarchive ia( is );
 
-            ia >> DirtyDirs;
-            ia >> OutdatedFiles;
+                ia >> DirtyDirs;
+                ia >> OutdatedFiles;
+            }
+            catch(...)
+            {
+                DirtyDirs.Clear();
+                OutdatedFiles.Clear();
+            }
         }
 
         void Save() const
