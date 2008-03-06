@@ -138,7 +138,8 @@ inline bool IsFileDirty( const WIN32_FIND_DATA& findData, const IVcsData& vcsDat
 inline bool IsVcsFile( EVcsStatus fs )
 {
     return fs != fsBogus &&
-           fs != fsNonVcs;
+           fs != fsNonVcs &&
+           fs != fsIgnored;
 }
 
 inline bool IsVcsFile( const WIN32_FIND_DATA& findData, const IVcsData& vcsData )

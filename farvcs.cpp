@@ -499,6 +499,7 @@ void VcsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, c
                    fs == fsModified  ? 'M' :
                    fs == fsOutdated  ? '*' :
                    fs == fsNonVcs    ? '?' :
+                   fs == fsIgnored   ? '|' :
                    fs == fsAddedRepo ? 'a' :
                    fs == fsGhost     ? '!' :
                                        ' ';
@@ -513,9 +514,10 @@ void VcsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, c
                             fs == fsGhost     ? '4' :
                             fs == fsAddedRepo ? '8' :
                             fs == fsNonVcs    ? '9' :
+                            fs == fsIgnored   ? '9' :
                                                 '6'   ];   // For sorting
 
-    if ( fs == fsNonVcs ) {
+    if ( !IsVcsFile( fs ) ) {
         pi.FindData.dwFileAttributes |= FILE_ATTRIBUTE_TEMPORARY;
         return;
     }
