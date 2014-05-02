@@ -1,21 +1,207 @@
-#ifndef __MISCUTIL_H
-#define __MISCUTIL_H
+#pragma once
 
-/*****************************************************************************
- File name:  miscutil.h
- Project:    FarVCS plugin
- Purpose:    General-purpose utilities
- Compiler:   MS Visual C++ 8.0
- Authors:    Michael Steinhause
- Dependencies: STL, Win32
-*****************************************************************************/
+#include <stdio.h>
+#include <tchar.h>
+#include <memory>
+#include <functional>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/serialization/set.hpp>
 
+#ifdef _UNICODE
+typedef std::wstring tstring;
+#else
+typedef std::string tstring;
+#endif
+
+/// <summary>
+/// A printf cousin returning a string.
+/// </summary>
+inline tstring sformat(const TCHAR *szFormat, ...)
+{
+    // Note the method is optimized for the optimistic case
+    // when the result fits the static buffer.
+
+    TCHAR staticBuf[2048];
+    va_list args;
+
+    va_start(args, szFormat);
+    int len = _vsntprintf_s(staticBuf, _TRUNCATE, szFormat, args);
+    va_end(args);
+
+    if (len >= 0)
+        return staticBuf;
+
+    va_start(args, szFormat);
+    len = _vsctprintf(szFormat, args) + 1; // +1 for trailing zero
+    va_end(args);
+
+    if (len <= 0)
+        throw std::runtime_error("_vsctprintf() failed.");
+
+    auto pDynamicBuf = std::unique_ptr<TCHAR[]>(new TCHAR[len]); // Should be changed to make_unique as soon as compiler provides it
+
+    va_start(args, szFormat);
+    _vsntprintf_s(pDynamicBuf.get(), len, _TRUNCATE, szFormat, args);
+    va_end(args);
+
+    return pDynamicBuf.get();
+}
+
+/// <summary>
+/// Constructs new directory name from a base directory name and a
+/// relative directory name.
+/// </summary>
+/// <remarks>
+/// If the relative directory name is absolute, simply replaces
+/// the base directory name.
+/// If the relateive directory name is "..", the base directory name
+/// is shortened to its parent directory name.
+/// <p>
+/// Defined in a header file because it is used in both projects
+/// with static and dynamic runtimes.
+/// </p>
+/// </remarks>
+inline tstring CatPath(const TCHAR *szDir, const TCHAR *szSubDir)
+{
+    if (szDir == 0 || *szDir == 0)
+        return _T("");
+    else if (szSubDir == 0 || *szSubDir == 0)
+        return szDir;
+    else if (szSubDir[1] == _T(':'))
+        return szSubDir;
+    else if (_tcschr(_T("\\/"), *szSubDir) != 0)
+        return szDir[1] == _T(':') ? tstring(szDir, 2) + szSubDir : szSubDir;
+    else if (_tcscmp(szSubDir, _T("..")) == 0)
+    {
+        const TCHAR *p = szDir + _tcslen(szDir) - 1;
+        if (_tcschr(_T("\\/"), *p) != 0 && p > szDir && *(p - 1) != _T(':'))
+            --p;
+        while (p >= szDir && _tcschr(_T("\\/"), *p) == 0)
+            --p;
+
+        return p < szDir                         ? szDir :
+               p == szDir || *(p - 1) == _T(':') ? tstring(szDir, p + 1 - szDir) :
+                                                   tstring(szDir, p - szDir);
+    }
+    else
+    {
+        tstring sNewDir(szDir);
+        if (!sNewDir.empty() && _tcschr(_T("\\/:"), *sNewDir.rbegin()) == 0)
+            sNewDir += _T("\\");
+        return sNewDir + szSubDir;
+    }
+}
+
+/// <summary>
+/// Extracts the filename from a full pathname, absolute or relative.
+/// </summary>
+/// <remarks>
+/// Defined in a header file because it is used in both projects
+/// with static and dynamic runtimes.
+/// </remarks>
+inline tstring ExtractFileName(const tstring& sPathName)
+{
+    size_t iLastSlash = sPathName.find_last_of(_T("\\/:"));
+    return iLastSlash == tstring::npos ? sPathName : sPathName.substr(iLastSlash + 1);
+}
+
+/// <summary>
+/// Extracts the path from a full pathname, absolute or relative.
+/// </summary>
+/// <remarks>
+/// Defined in a header file because it is used in both projects
+/// with static and dynamic runtimes.
+/// </remarks>
+inline tstring ExtractPath(const tstring& sPathName)
+{
+    size_t iLastSlash = sPathName.find_last_of(_T("\\/:"));
+    return iLastSlash == tstring::npos ? _T("") : sPathName.substr(0, iLastSlash);
+}
+
+/// <summary>
+/// Encloses pathname in double quotes, if necessary.
+/// </summary>
+/// <remarks>
+/// Defined in a header file because it is used in both projects
+/// with static and dynamic runtimes.
+/// </remarks>
+inline tstring QuoteIfNecessary(tstring sFileName)
+{
+    if (sFileName.find_first_of(_T(' ')) != tstring::npos)
+    {
+        sFileName.insert(0, _T("\""));
+        sFileName += _T('\"');
+    }
+
+    return sFileName;
+}
+
+//==========================================================================>>
+// String comparison functors
+//==========================================================================>>
+
+struct EqualNoCase : public std::binary_function<tstring, tstring, bool>
+{
+    result_type operator()(const first_argument_type& left, const second_argument_type& right) const
+    {
+        return _tcsicmp(left.c_str(), right.c_str()) == 0;
+    }
+};
+
+struct LessNoCase : public std::binary_function<tstring, tstring, bool>
+{
+    result_type operator()(const first_argument_type& left, const second_argument_type& right) const
+    {
+        return _tcsicmp(left.c_str(), right.c_str()) < 0;
+    }
+};
+
+struct StartsWithDir : public std::binary_function<tstring, tstring, bool>
+{
+    result_type operator()(const first_argument_type& str, const second_argument_type& substr) const
+    {
+        return _tcsnicmp(str.c_str(), substr.c_str(), substr.length()) == 0 &&
+            (str.length() == substr.length() || _tcschr(_T("\\/:"), str[substr.length()]) != nullptr);
+    }
+};
+
+struct IsFileFromDir : public std::binary_function<tstring, tstring, bool>
+{
+    result_type operator()(const first_argument_type& dirname, const second_argument_type& pathname) const
+    {
+        return _tcsnicmp(dirname.c_str(), pathname.c_str(), pathname.length()) == 0 &&
+            pathname.find_last_of(_T("\\/:")) == dirname.length();
+    }
+};
+
+/// <summary>
+/// Returns a srting of exactly specified length by truncating the source string
+/// with "..." or extending it with trailing spaces.
+/// </summary>
+inline tstring ProkrustString(const tstring& sVictim, tstring::size_type len)
+{
+    tstring s{ sVictim };
+
+    if (s.length() > len)
+    {
+        static const TCHAR cszHellipsis[] = _T("...");
+        s.erase(len - _countof(cszHellipsis) + 1) += cszHellipsis;
+    }
+    else if (s.length() < len)
+        s += sformat(_T("%*c"), len - s.length(), _T(' '));
+
+    return s;
+}
+
+/*
 #include <string>
 #include <vector>
 #include <set>
 #include <functional>
 #include <algorithm>
 #include <process.h>
+#include <tchar.h>
 #include <windows.h>
 #include <shlobj.h>
 #include <boost/iterator/iterator_facade.hpp>
@@ -28,174 +214,63 @@
 #pragma warning(default:4100)
 #include <boost/serialization/set.hpp>
 
-//==========================================================================>>
-// printf-like wrapper around ::OutputDebugString
-//
-// Should be in cpp-file, not here, but it is more convenient this way
-// as it is used in projects with static and dynamic runtimes
-//==========================================================================>>
-
-inline void Log( const char *szFormat, ... )
+template <typename C> struct s
 {
-    va_list args;
-    char szBuf[2048];
-    long len;
+};
 
-    va_start( args, szFormat );
-    len = _vsnprintf( szBuf, sizeof(szBuf), szFormat, args );
-    va_end(args);
-
-    if ( len < 0 || len > sizeof(szBuf)-1 )
-        len = sizeof(szBuf)-1;
-
-    szBuf[len] = '\0';
-
-    ::OutputDebugString( szBuf );
-}
-
-//==========================================================================>>
-// Trivia
-//==========================================================================>>
-
-typedef std::string tstring;
-
-template <typename T, int N> inline unsigned int array_size( const T(&)[N] )
+template <> struct s<char>
 {
-    return N;
-}
+    typedef std::string string;
 
-template <int N> inline char *array_strcpy( char (&dst)[N], const char *src )
+    template <typename... Args> size_t strlen(Args... args) { return ::strlen(args...); }
+    template <typename... Args> int vsnprintf(Args... args) { return ::vsnprintf(args...); }
+};
+
+template <> struct s<wchar_t>
 {
-    char *ret = ::strncpy( dst, src, N );
-    dst[N-1] = 0;
-    return ret;
-}
+    typedef std::wstring string;
 
-template <int N> inline char *array_strncat( char (&dst)[N], const char *src, size_t count )
-{
-    char *ret = ::strncat( dst, src, min(count,N-::strlen(dst)-1) );
-    dst[N-1] = 0;
-    return ret;
-}
+    template <typename... Args> size_t strlen(Args... args) { return ::wcslen(args...); }
+    template <typename... Args> int vsnprintf(Args... args) { return ::_vsnwprintf_s(args...); }
+};
 
-template <int N> inline int array_sprintf( char (&dst)[N], const char *szFormat, ... )
-{
-    va_list args;
-
-    va_start( args, szFormat );
-    int len = ::_vsnprintf( dst, N, szFormat, args );
-    va_end(args);
-
-    dst[N-1] = 0;
-    return len;
-}
-
-std::vector<std::string> SplitString( const std::string& s, char c );
+template <typename C> std::vector<typename s<C>::string> Split(const typename s<C>::string& s, C c);
 void SafeSleep( DWORD dwMilliseconds );
 
-inline std::string GetModuleFileName( HMODULE hModule )
+template <typename C> inline typename s<C>::string GetModuleFileName(HMODULE hModule)
 {
-    char szFileName[MAX_PATH];
-    int len = ::GetModuleFileNameA( hModule, szFileName, array_size(szFileName)-1 );
+    C szFileName[MAX_PATH];
+    int len = ::GetModuleFileName(hModule, szFileName, _countof(szFileName) - 1);
     szFileName[len] = 0;
     return szFileName;
 }
 
-inline std::string u2s( unsigned int u )
+template <typename C> inline typename s<C>::string u2s(unsigned int u)
 {
-    char buf[256];
-    array_sprintf( buf, "%u", u );
+    C buf[256];
+    array_sprintf(buf, _T("%u"), u);
     return buf;
 }
 
-inline std::string i2s( int i )
+template <typename C> inline s<C>::string i2s(int i)
 {
-    char buf[256];
-    array_sprintf( buf, "%d", i );
+    C buf[256];
+    array_sprintf(buf, _T("%d"), i);
     return buf;
 }
 
-inline std::string l2s( long l )
+template <typename C> inline s<C>::string l2s(long l)
 {
-    char buf[256];
-    array_sprintf( buf, "%ld", l );
+    C buf[256];
+    array_sprintf(buf, _T("%ld"), l);
     return buf;
 }
 
-inline std::string ul2s( unsigned long ul )
+template <typename C> inline s<C>::string ul2s(unsigned long ul)
 {
-    char buf[256];
-    array_sprintf( buf, "%lu", ul );
+    C buf[256];
+    array_sprintf(buf, _T("%lu"), ul);
     return buf;
-}
-
-//==========================================================================>>
-// String comparison functors
-//==========================================================================>>
-
-struct StartsWithDir : public std::binary_function<std::string, std::string, bool>
-{
-    result_type operator()( const first_argument_type& str, const second_argument_type& substr ) const
-    {
-        return _strnicmp( str.c_str(), substr.c_str(), substr.length() ) == 0 &&
-               (str.length() == substr.length() || strchr( "\\/:", str[substr.length()] ) != 0);
-    }
-};
-
-struct IsFileFromDir : public std::binary_function<std::string, std::string, bool>
-{
-    result_type operator()( const first_argument_type& str, const second_argument_type& substr ) const
-    {
-        return _strnicmp( str.c_str(), substr.c_str(), substr.length() ) == 0 &&
-               str.find_last_of( "\\/:" ) == substr.length();
-    }
-};
-
-struct LessNoCase : public std::binary_function<std::string, std::string, bool>
-{
-    result_type operator()( const first_argument_type& s1, const second_argument_type& s2 ) const
-    {
-        return _stricmp( s1.c_str(), s2.c_str() ) < 0;
-    }
-};
-
-struct EqualNoCase : public std::binary_function<std::string, std::string, bool>
-{
-    result_type operator()( const first_argument_type& s1, const second_argument_type& s2 ) const
-    {
-        return _stricmp( s1.c_str(), s2.c_str() ) == 0;
-    }
-};
-
-inline std::string sformat( const char *szFormat, ... )
-{
-    va_list args;
-    char szBuf[4096];
-
-    va_start( args, szFormat );
-    size_t len = _vsnprintf( szBuf, array_size(szBuf)-1, szFormat, args );
-    szBuf[len] = 0;
-
-    return szBuf;
-}
-
-//==========================================================================>>
-// Truncate string for formatted output, adding trailing "..."
-//==========================================================================>>
-
-inline std::string ProkrustString( const std::string& sVictim, std::string::size_type len )
-{
-    std::string s( sVictim );
-
-    if ( s.length() > len )
-    {
-        static const char cszHellipsis[] = "...";
-        s.erase( len-array_size(cszHellipsis)+1 ) += cszHellipsis;
-    }
-    else if ( s.length() < len )
-        s += sformat( "%*c", len-s.length(), ' ' );
-
-    return s;
 }
 
 //==========================================================================>>
@@ -232,49 +307,6 @@ private:
 };
 
 //==========================================================================>>
-// Thread-safe set of full file names
-//==========================================================================>>
-
-class TSFileSet
-{
-public:
-    typedef std::set<std::string>::iterator iterator;
-    typedef std::set<std::string>::const_iterator const_iterator;
-
-    iterator begin() { return cont.begin(); }
-    iterator end()   { return cont.end();   }
-
-    const_iterator begin() const { return cont.begin(); }
-    const_iterator end()   const { return cont.end();   }
-
-public:
-    void Add( const std::string& sFile )                 { CSGuard _(cs); cont.insert(sFile); }
-    void Remove( const std::string& sFile )              { CSGuard _(cs); cont.erase(sFile); }
-    bool ContainsEntry( const std::string& sFile ) const { CSGuard _(cs); return std::find_if( cont.begin(), cont.end(), std::bind2nd(EqualNoCase(),sFile) ) != cont.end(); }
-    bool ContainsDown( const std::string& sDir ) const   { CSGuard _(cs); return std::find_if( cont.begin(), cont.end(), std::bind2nd(StartsWithDir(),sDir) ) != cont.end(); }
-    void Merge( const TSFileSet& rhs )                   { CSGuard _(cs); cont.insert( rhs.cont.begin(), rhs.cont.end() ); }
-    void Clear()                                         { CSGuard _(cs); cont.clear(); }
-
-    void RemoveFilesOfDir( const std::string& sDir, bool bRecursive )
-    {
-        CSGuard _(cs);
-
-        if ( bRecursive )
-            cont.erase( std::remove_if( cont.begin(), cont.end(), std::bind2nd(StartsWithDir(),sDir) ), cont.end() );
-        else
-            cont.erase( std::remove_if( cont.begin(), cont.end(), std::bind2nd(IsFileFromDir(),sDir) ), cont.end() );
-    }
-
-private:
-    std::set<std::string> cont;
-    mutable CriticalSection cs;
-
-private:
-    friend class boost::serialization::access;
-    template <class Archive> void serialize( Archive& ar, const unsigned int ) { CSGuard _(cs); ar & cont; }
-};
-
-//==========================================================================>>
 // Thread class. Encapsulates thread starting and graceful stopping
 //==========================================================================>>
 
@@ -303,78 +335,6 @@ private:
         return thread.m_pThreadRoutine( thread.m_Param, thread.m_hTerminateEvent );
     }
 };
-
-//==========================================================================>>
-// Constructs new directory name from a current directory name and a
-// relative directory name.
-// If the relative directory name turns out absolute, it simply replaces
-// the current directory name.
-// If the relateive directory name is "..", the current directory name
-// is shortened to its parent directory name.
-//
-// Should be in cpp-file, not here, but it is more convenient this way
-// as it is used in projects with static and dynamic runtimes
-//==========================================================================>>
-
-inline std::string CatPath( const char *szDir, const char *szSubDir )
-{
-    if ( szDir == 0 || *szDir == 0 )
-        return "";
-    else if ( szSubDir == 0 || *szSubDir == 0 )
-        return szDir;
-    else if ( szSubDir[1] == ':' )
-        return szSubDir;
-    else if ( strchr( "\\/", *szSubDir ) != 0 )
-        return szDir[1] == ':' ? std::string(szDir,2) + szSubDir : szSubDir;
-    else if ( strcmp( szSubDir, ".." ) == 0 )
-    {
-        const char *p = szDir + strlen(szDir) - 1;
-        if ( strchr( "\\/", *p ) != 0 && p > szDir && *(p-1) != ':' )
-            --p;
-        while ( p >= szDir && strchr( "\\/", *p ) == 0 )
-            --p;
-
-        return p < szDir                   ? szDir :
-               p == szDir || *(p-1) == ':' ? std::string( szDir, p+1-szDir ) :
-                                             std::string( szDir, p-szDir );
-    }
-    else
-    {
-        std::string sNewDir( szDir );
-        if ( !sNewDir.empty() && strchr( "\\/:", *sNewDir.rbegin() ) == 0 )
-            sNewDir += "\\";
-        return sNewDir + szSubDir;
-    }
-}
-
-//==========================================================================>>
-// Extracts the filename and the path from a full pathname
-//
-// Should be in cpp-file, not here, but it is more convenient this way
-// as it is used in projects with static and dynamic runtimes
-//==========================================================================>>
-
-inline std::string ExtractFileName( const std::string& sPathName )
-{
-    size_t iLastSlash = sPathName.find_last_of( "\\/:" );
-    return iLastSlash == std::string::npos ? sPathName : sPathName.substr( iLastSlash+1 );
-}
-
-inline std::string ExtractPath( const std::string& sPathName )
-{
-    size_t iLastSlash = sPathName.find_last_of( "\\/:" );
-    return iLastSlash == std::string::npos ? "" : sPathName.substr( 0, iLastSlash );
-}
-
-inline std::string QuoteIfNecessary( std::string sFileName )
-{
-    if ( sFileName.find_first_of( ' ' ) != std::string::npos ) {
-        sFileName.insert( 0, "\"" );
-        sFileName += '\"';
-    }
-
-    return sFileName;
-}
 
 //==========================================================================>>
 // STL-compliant iterator wrapper around ::FindFirstFile/::FindNextFile
@@ -410,7 +370,7 @@ class dir_iterator : public boost::iterator_facade<dir_iterator,WIN32_FIND_DATA,
 {
 public:
     dir_iterator() {}
-    explicit dir_iterator( const std::string& sDir, bool bWithDots = false ) : paccessor_( new dir_accessor( sDir, bWithDots ) ) {}
+    explicit dir_iterator( const s<C>::string& sDir, bool bWithDots = false ) : paccessor_( new dir_accessor( sDir, bWithDots ) ) {}
 
 private:
     friend class boost::iterator_core_access;
@@ -434,9 +394,9 @@ private:
 private:
     struct dir_accessor : public ref_countable<dir_accessor>
     {
-        explicit dir_accessor( const std::string& sDir, bool bWithDots ) : bWithDots_(bWithDots)
+        explicit dir_accessor( const s<C>::string& sDir, bool bWithDots ) : bWithDots_(bWithDots)
         {
-            hFind_ = ::FindFirstFile( CatPath(sDir.c_str(),"*").c_str(), &findData_ );
+            hFind_ = ::FindFirstFile( CatPath(sDir.c_str(), _T("*")).c_str(), &findData_ );
             if ( hFind_ == INVALID_HANDLE_VALUE && ::GetLastError() != ERROR_NO_MORE_FILES )
                 throw std::runtime_error( "::FindFirstFile failed" );
             if ( !bWithDots_ && is_dot_entry( findData_.cFileName ) )
@@ -481,9 +441,9 @@ private:
             hFind_ = INVALID_HANDLE_VALUE;
         }
 
-        bool is_dot_entry( const char *szName )
+        bool is_dot_entry( const TCHAR *szName )
         {
-            return strcmp( szName, "." ) == 0 || strcmp( szName, ".." ) == 0;
+            return _tcscmp( szName, _T(".") ) == 0 || _tcscmp( szName, _T("..") ) == 0;
         }
     };
 
@@ -494,26 +454,26 @@ private:
 // GetTempPath/GetTempFileName wrappers
 //==========================================================================>>
 
-std::string GetTempPath();
-std::string GetTempFileName( const char *szPrefix = 0 );
+s<C>::string GetTempPath();
+s<C>::string GetTempFileName( const TCHAR *szPrefix = 0 );
 
-inline std::string GetCurrentDirectory()
+inline s<C>::string GetCurrentDirectory()
 {
-    char szBuf[MAX_PATH];
-    DWORD dwResult = ::GetCurrentDirectory( array_size(szBuf), szBuf );
+    TCHAR szBuf[MAX_PATH];
+    DWORD dwResult = ::GetCurrentDirectory( _countof(szBuf), szBuf );
 
-    if ( dwResult < array_size(szBuf) )
+    if (dwResult < _countof(szBuf))
         return szBuf;
-    else if ( dwResult >= array_size(szBuf) )
+    else if (dwResult >= _countof(szBuf))
         throw std::runtime_error( "::GetCurrentDirectory returns path that is too long" );
     else
         throw std::runtime_error( "::GetCurrentDirectory failed" );
 }
 
-inline std::string GetTempPipeName()
+inline s<C>::string GetTempPipeName()
 {
     static int n;
-    return sformat( "\\\\.\\pipe\\%ld_%d", GetCurrentProcessId(), ++n );
+    return sformat( _T("\\\\.\\pipe\\%ld_%d"), GetCurrentProcessId(), ++n );
 }
 
 //==========================================================================>>
@@ -576,52 +536,51 @@ class TempFile
 {
 public:
     TempFile() : sFileName(GetTempFileName()) {}
-    explicit TempFile( const char *szFileName ) : sFileName(szFileName) {}
+    explicit TempFile( const TCHAR *szFileName ) : sFileName(szFileName) {}
 
     TempFile( const TempFile& rhs ) : sFileName( const_cast<TempFile&>(rhs).Detach() ) {}      // Deliberate hack
     TempFile& operator=( const TempFile& rhs ) { TempFile tmp(rhs); swap(tmp); return *this; } // Here too
 
     ~TempFile() { Delete(); } // Yes, not virtual
 
-    bool IsValid()        const { return !sFileName.empty(); }
-    bool operator!()      const { return !IsValid(); }
-    std::string GetName() const { return sFileName; }
+    bool IsValid()    const { return !sFileName.empty(); }
+    bool operator!()  const { return !IsValid(); }
+    s<C>::string GetName() const { return sFileName; }
 
     void swap( TempFile& rhs ) { std::swap( sFileName, rhs.sFileName ); }
 
     void Delete() { if ( IsValid() ) ::DeleteFile( Detach().c_str() ); }
-    std::string Detach() { std::string sToReturn(sFileName); sFileName.clear(); return sToReturn; }
+    s<C>::string Detach() { s<C>::string sToReturn(sFileName); sFileName.clear(); return sToReturn; }
 
 private:
-    std::string sFileName;
+    s<C>::string sFileName;
 };
 
 //==========================================================================>>
 // Wrappers around FormatMessage
 //==========================================================================>>
 
-inline std::string FormatSystemMessage( DWORD dwMsgId )
+inline s<C>::string FormatSystemMessage( DWORD dwMsgId )
 {
-    char buf[4096];
-    FormatMessage( FORMAT_MESSAGE_FROM_SYSTEM, 0, dwMsgId, 0, buf, sizeof buf, 0 );
+    TCHAR buf[4096];
+    FormatMessage( FORMAT_MESSAGE_FROM_SYSTEM, 0, dwMsgId, 0, buf, _countof(buf), 0 );
 
-    int len = strlen(buf);
+    size_t len = _tcslen(buf);
 
-    if ( len > 1 && buf[len-2] == '\r' && buf[len-1] == '\n' )
+    if ( len > 1 && buf[len-2] == _T('\r') && buf[len-1] == _T('\n') )
         buf[len-2] = 0;
 
     return buf;
 }
 
-inline std::string LastErrorStr()
+inline s<C>::string LastErrorStr()
 {
     return FormatSystemMessage( ::GetLastError() );
 }
 
-inline std::string GetLocalAppDataFolder()
+inline s<C>::string GetLocalAppDataFolder()
 {
-    char szBuf[MAX_PATH];
-    return SUCCEEDED( ::SHGetFolderPath( 0, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE, 0, SHGFP_TYPE_CURRENT, szBuf ) ) ? szBuf : "";
+    TCHAR szBuf[MAX_PATH];
+    return SUCCEEDED( ::SHGetFolderPath( 0, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE, 0, SHGFP_TYPE_CURRENT, szBuf ) ) ? szBuf : _T("");
 }
-
-#endif // __MISCUTIL_H
+*/

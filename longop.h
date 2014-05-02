@@ -1,22 +1,17 @@
-#ifndef __LONGOP_H
-#define __LONGOP_H
+#pragma once
 
 /*****************************************************************************
- File name:  longop.h
  Project:    FarVCS plugin
  Purpose:    Wrappers for long operations in FAR plugins
- Compiler:   MS Visual C++ 8.0
- Authors:    Michael Steinhause
- Dependencies: STL
 *****************************************************************************/
 
 #include <string>
 #include <vector>
 #include <memory.h>
 #include <windows.h>
-#include "farcolor.hpp"
+#include "farsdk/plugin.hpp"
+#include "farsdk/farcolor.hpp"
 #include "enforce.h"
-#include "plugin.hpp"
 #include "miscutil.h"
 #include "plugutil.h"
 #include "lang.h"
@@ -24,46 +19,47 @@
 class LongOperation
 {
 public:
-    LongOperation( const char *szPluginName ) : m_szPluginName( szPluginName ), m_hDlg( 0 ) {}
+    LongOperation(const TCHAR *szPluginName) : m_pluginName(szPluginName), m_hDlg(0) {}
     virtual ~LongOperation() {}
 
-    bool Execute()
+    intptr_t Execute()
     {
-        std::vector<InitDialogItem> InitItems;
-        RECT r;
+        m_hDlg = DoGetDlg();
 
-        DoGetDlg( r, InitItems );
-        if ( InitItems.empty() )
-            return false;
+        if (m_hDlg == INVALID_HANDLE_VALUE)
+            return 0;
 
-        std::vector<FarDialogItem> DialogItems( InitItems.size()+1 ); // Far crashes when using just InitItems.size()
-        InitDialogItems( &InitItems[0], &DialogItems[0], InitItems.size() );
-
-        return StartupInfo.DialogEx( StartupInfo.ModuleNumber, r.left, r.top, r.right, r.bottom, 0, &DialogItems[0], DialogItems.size(), 0, 0, DlgProc, reinterpret_cast<long>( this ) ) != 0;
+        intptr_t result = StartupInfo.DialogRun(m_hDlg);
+        StartupInfo.DialogFree(m_hDlg);
+        return result;
     }
 
 protected:
-    const char *GetPluginName() { return m_szPluginName; }
-    HANDLE GetDlg() { return m_hDlg; }
+    const TCHAR *GetPluginName() { return m_pluginName.c_str(); }
 
-    virtual void DoGetDlg( RECT& r, std::vector<InitDialogItem>& vInitItems ) = 0;
+    virtual HANDLE DoGetDlg() = 0;
     virtual bool DoExecute() = 0;
-    virtual void DrawDlgItem( int /*id*/, FarDialogItem * /*pitem*/ ) {}
+    virtual void DrawDlgItem(int /*id*/, FarDialogItem * /*pitem*/) {}
 
-    const char *m_szPluginName;
+    tstring m_pluginName;
     HANDLE m_hDlg;
 
-private:
-    static long WINAPI DlgProc( HANDLE hDlg, int Msg, int Param1, long Param2 )
+    /// <summary>
+    /// Dialog procedure intended to be shared by all classes implementing <c>LongOperation</c>.
+    /// </summary>
+    /// <remarks>
+    /// Only one <c>LongOperation</c> dialog at at ime can be active.
+    /// </remarks>
+    static intptr_t WINAPI DlgProc(HANDLE hDlg, intptr_t Msg, intptr_t Param1, void *Param2)
     {
-        static LongOperation *pThis;
+        static LongOperation *pThis; // static -- this is why only one dialog at a time.
 
-        if ( Msg == DN_INITDIALOG )
+        if (Msg == DN_INITDIALOG)
         {
-            pThis = reinterpret_cast<LongOperation *>( Param2 );
+            pThis = reinterpret_cast<LongOperation *>(Param2);
             pThis->m_hDlg = hDlg;
         }
-        else if ( Msg == DN_ENTERIDLE )
+        else if (Msg == DN_ENTERIDLE)
         {
             bool bResult = false;
             
@@ -71,194 +67,207 @@ private:
             {
                 bResult = pThis->DoExecute();
             }
-            catch( std::runtime_error& e )
+            catch(std::runtime_error& e)
             {
-                MsgBoxWarning( pThis->m_szPluginName, e.what() );
+                MsgBoxWarning(pThis->m_pluginName.c_str(), _T("%s"), e.what());
             }
 
-            StartupInfo.SendDlgMessage( hDlg, DM_CLOSE, bResult ? 1 : 0, 0 );
+            StartupInfo.SendDlgMessage(hDlg, DM_CLOSE, bResult ? 1 : 0, 0);
         }
-        else if ( Msg == DN_DRAWDLGITEM )
+        else if (Msg == DN_DRAWDLGITEM)
         {
-            pThis->DrawDlgItem( (int)Param1, (FarDialogItem*)Param2 );
+            pThis->DrawDlgItem((int)Param1, (FarDialogItem*)Param2);
         }
 
-        return StartupInfo.DefDlgProc( hDlg, Msg, Param1, Param2 );
+        return StartupInfo.DefDlgProc(hDlg, Msg, Param1, Param2);
     }
 };
 
 class SimpleLongOperation : public LongOperation
 {
 public:
-    SimpleLongOperation( const char *szPluginName ) : LongOperation( szPluginName ), m_dwLastUserInteraction(0) {}
+    SimpleLongOperation(const TCHAR *szPluginName) : LongOperation(szPluginName), m_dwLastUserInteraction(0) {}
 
 protected:
-    virtual void DoGetDlg( RECT& r, std::vector<InitDialogItem>& vInitItems )
+    virtual HANDLE DoGetDlg() override
     {
-        static char szProgressBg[nMaxConsoleWidth];
-        ::memset( szProgressBg, 0xB0, W() );
+        static TCHAR szProgressBg[nMaxConsoleWidth];
+        std::uninitialized_fill_n(szProgressBg, 0xB0, W());
+        szProgressBg[_countof(szProgressBg) - 1] = 0;
 
-        unsigned long dwPromptId = DoGetPrompt();
-        const char *szPrompt = (dwPromptId > 1000) ? reinterpret_cast<const char*>(dwPromptId) : GetMsg(dwPromptId);
+        intptr_t dwPromptId = DoGetPrompt();
+        const TCHAR *szPrompt = dwPromptId > 1000 ? reinterpret_cast<const TCHAR*>(dwPromptId) : GetMsg(static_cast<int>(dwPromptId));
 
-        InitDialogItem InitItems[] =
+        FarDialogItem DlgItems[] =
         {
-            /* 0 */ { DI_DOUBLEBOX, 3,1,W()+6,5,  0,0, 0, 0, const_cast<char*>( GetPluginName() )    },
-            /* 1 */ { DI_TEXT,      5,2,0,0,      0,0, 0, 0, const_cast<char*>( szPrompt )           },
-            /* 2 */ { DI_TEXT,      5,3,0,0,      0,0, 0, 0, const_cast<char*>( DoGetInitialInfo() ) },
-            /* 3 */ { DI_TEXT,      5,4,0,0,      0,0, 0, 0, const_cast<char*>( szProgressBg )       }
+            /* 0 */ { DI_DOUBLEBOX, 3,1,W()+6,5,  0, nullptr,nullptr, 0, GetPluginName(),    0,0, { 0, 0 } },
+            /* 1 */ { DI_TEXT,      5,2,0,0,      0, nullptr,nullptr, 0, szPrompt,           0,0, { 0, 0 } },
+            /* 2 */ { DI_TEXT,      5,3,0,0,      0, nullptr,nullptr, 0, DoGetInitialText(), 0,0, { 0, 0 } },
+            /* 3 */ { DI_TEXT,      5,4,0,0,      0, nullptr,nullptr, 0, szProgressBg,       0,0, { 0, 0 } }
         };
 
-        vInitItems.clear();
-        vInitItems.assign( InitItems, InitItems+array_size(InitItems) );
-
-        r.left = -1;
-        r.top = -1;
-        r.right = W()+10;
-        r.bottom = 7;
+        StartupInfo.DialogInit(
+            &PluginGuid,
+            &PluginGuid, // !!! Replace with proper dialog guid
+            -1, -1, W() + 10, 7,
+            0, // HelpTopic
+            DlgItems,
+            _countof(DlgItems),
+            0, // Reserved
+            FDLG_NONE,
+            DlgProc,
+            this);
     }
 
-    bool Interaction( const char *szCurrentPath, int percentage, bool bForce = false )
+    bool UserInteraction(const TCHAR *szCurrentPath, unsigned short progressPercent, bool bForce = false)
     {
         // Updating UI and processing the user input are time-consuming
-        // operations. We don't want to to that too often
+        // operations. We don't want to do that too often.
 
         if ( !bForce && ::GetTickCount() - m_dwLastUserInteraction < 100 )
             return false;
 
         m_dwLastUserInteraction = ::GetTickCount();
             
-        static char szBackground[nMaxConsoleWidth];
-        ::memset( szBackground, ' ', sizeof szBackground );
+        static TCHAR szBackground[nMaxConsoleWidth];
+        std::uninitialized_fill_n(szBackground, _countof(szBackground), _T(' '));
+        szBackground[_countof(szBackground) - 1] = 0;
 
-        static char szProgress[nMaxConsoleWidth];
-        ::memset( szProgress, 0xDB, sizeof szProgress );
+        static TCHAR szProgress[nMaxConsoleWidth];
+        std::uninitialized_fill_n(szProgress, _countof(szProgress), 0xDB);
+        szProgress[_countof(szProgress) - 1] = 0;
 
-        szProgress[W()*min(max(percentage,0),100)/100] = 0;
+        szProgress[W() * min(progressPercent, 100) / 100] = 0;
 
-        char szText[MAX_PATH];
-        array_strcpy( szText, szCurrentPath );
-        FSF.TruncPathStr( szText, W() );
+        TCHAR szText[MAX_PATH];
+        _tcsncpy_s(szText, szCurrentPath, _TRUNCATE);
+        FSF.TruncPathStr(szText, W());
 
-        FarDialogItemData background = { W(), szBackground };
-        FarDialogItemData text       = { strlen(szText), szText };
-        FarDialogItemData progress   = { strlen(szProgress), szProgress };
+        FarDialogItemData background = { sizeof(FarDialogItemData), _tcslen(szBackground), szBackground };
+        FarDialogItemData text       = { sizeof(FarDialogItemData), _tcslen(szText),       szText };
+        FarDialogItemData progress   = { sizeof(FarDialogItemData), _tcslen(szProgress),   szProgress };
 
-        StartupInfo.SendDlgMessage( GetDlg(), DM_SETTEXT, 2, (long)&background );
-        StartupInfo.SendDlgMessage( GetDlg(), DM_SETTEXT, 2, (long)&text );
-        StartupInfo.SendDlgMessage( GetDlg(), DM_SETTEXT, 3, (long)&progress );
+        StartupInfo.SendDlgMessage(m_hDlg, DM_SETTEXT, 2, &background);
+        StartupInfo.SendDlgMessage(m_hDlg, DM_SETTEXT, 2, &text);
+        StartupInfo.SendDlgMessage(m_hDlg, DM_SETTEXT, 3, &progress);
 
         return CheckForEsc();
     }
 
     unsigned int W() const { return 66; } // Status line width
 
-    virtual unsigned long DoGetPrompt() = 0;
-    virtual const char *DoGetInitialInfo() = 0;
+    virtual intptr_t DoGetPrompt() = 0;
+    virtual const TCHAR *DoGetInitialText() = 0;
 
 private:
-    DWORD m_dwLastUserInteraction;  // Tracks the time of the last user interaction
+    DWORD m_dwLastUserInteraction;
 };
 
 class ScrollLongOperation : public LongOperation
 {
 public:
-    ScrollLongOperation( const char *szPluginName ) : LongOperation( szPluginName ), m_dwLastUserInteraction(0) {}
+    ScrollLongOperation(const TCHAR *szPluginName) : LongOperation(szPluginName), m_dwLastUserInteraction(0) {}
 
 protected:
-    virtual void DoGetDlg( RECT& r, std::vector<InitDialogItem>& vInitItems )
+    virtual HANDLE DoGetDlg() override
     {
-        static std::vector<CHAR_INFO> VBuf( nMaxConsoleWidth * nMaxConsoleHeight ); // Allocate maximum. Who cares about extra 30kB?
+        static std::vector<FAR_CHAR_INFO> VBuf;
+        VBuf.reserve(nMaxConsoleWidth * nMaxConsoleHeight); // Allocate maximum. Who cares about an extra 1MB?
 
-        CHAR_INFO ciInit = { ' ', (WORD)StartupInfo.AdvControl( StartupInfo.ModuleNumber, ACTL_GETCOLOR, (void*)COL_DIALOGBOX ) };
-        
-        for ( unsigned int i = 0; i < VBuf.size(); ++i )
-            VBuf[i] = ciInit;
+        FarColor dlgColor;
+        if (!StartupInfo.AdvControl(&PluginGuid, ACTL_GETCOLOR, COL_DIALOGBOX, &dlgColor))
+            throw std::runtime_error("ACTL_GETCOLOR failed.");
 
-        unsigned long dwPromptId = DoGetPrompt();
-        const char *szPrompt = (dwPromptId > 1000) ? reinterpret_cast<const char*>(dwPromptId) : GetMsg(dwPromptId);
+        std::uninitialized_fill_n(VBuf.begin(), VBuf.size(), FAR_CHAR_INFO{ _T(' '), dlgColor });
 
-        InitDialogItem InitItems[] =
+        intptr_t dwPromptId = DoGetPrompt();
+        const TCHAR *szPrompt = dwPromptId > 1000 ? reinterpret_cast<const TCHAR*>(dwPromptId) : GetMsg(static_cast<int>(dwPromptId));
+
+        FarDialogItem DlgItems[] =
         {
-            /* 0 */ { DI_DOUBLEBOX,   3,   1, W()+6, H()+4, 0,0,                      0, 0, const_cast<char*>( GetPluginName() ) },
-            /* 1 */ { DI_TEXT,        5,   2, 0,     0,     0,0,                      0, 0, const_cast<char*>( szPrompt )        },
-            /* 2 */ { DI_TEXT,        5,   3, 0,     0,     0,0,                      DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""        },
-            /* 3 */ { DI_USERCONTROL, 5,   4, W()+4, H()+3, 0,(unsigned int)&VBuf[0], 0, 0, ""                                   }
+            /* 0 */ { DI_DOUBLEBOX,   3,1,W()+6,H()+4, 0,                                    nullptr,nullptr, 0,                            GetPluginName(),  0,0, { 0, 0 } },
+            /* 1 */ { DI_TEXT,        5,2,0,0,         0,                                    nullptr,nullptr, 0,                            szPrompt,         0,0, { 0, 0 } },
+            /* 2 */ { DI_TEXT,        5,3,0,0,         0,                                    nullptr,nullptr, DIF_BOXCOLOR | DIF_SEPARATOR, _T(""),           0,0, { 0, 0 } },
+            /* 3 */ { DI_USERCONTROL, 5,4,W()+4,H()+3, reinterpret_cast<intptr_t>(&VBuf[0]), nullptr,nullptr, 0,                            nullptr,          0,0, { 0, 0 } }
         };
 
-        vInitItems.clear();
-        vInitItems.assign( InitItems, InitItems+array_size(InitItems) );
-
-        r.left = -1;
-        r.top = -1;
-        r.right = W()+10;
-        r.bottom = H()+6;
+        StartupInfo.DialogInit(
+            &PluginGuid,
+            &PluginGuid, // !!! Replace with proper dialog guid
+            -1, -1, W() + 10, H() + 6,
+            0, // HelpTopic
+            DlgItems,
+            _countof(DlgItems),
+            0, // Reserved
+            FDLG_NONE,
+            DlgProc,
+            this);
     }
 
-    void Scroll( const char *szNextLine )
+    void Scroll(const TCHAR *szNextLine)
     {
-        if ( vLines.size() >= H() )
-            vLines.erase( vLines.begin() );
+        if (vLines.size() >= H())
+            vLines.erase(vLines.begin());
 
-        if ( !vLines.empty() || *szNextLine )
-            vLines.push_back( ProkrustString(szNextLine,W()) );
+        if (!vLines.empty() || *szNextLine)
+            vLines.push_back(ProkrustString(szNextLine, W()));
     }
 
-    bool Interaction( bool bForce = true )
+    bool UserInteraction(bool bForce = true)
     {
         // Updating UI and processing the user input are time-consuming
-        // operations. We don't want it to happen too often
+        // operations. We don't want it to happen too often.
 
-        if ( !bForce && ::GetTickCount() - m_dwLastUserInteraction < 100 )
+        if (!bForce && ::GetTickCount() - m_dwLastUserInteraction < 100)
             return false;
 
         m_dwLastUserInteraction = ::GetTickCount();
             
-        StartupInfo.SendDlgMessage( GetDlg(), DM_SHOWITEM, 3, 1 );
+        StartupInfo.SendDlgMessage(m_hDlg, DM_SHOWITEM, 3, reinterpret_cast<void*>(1) );
         return CheckForEsc();
     }
 
-    void DrawDlgItem( int id, FarDialogItem *pitem )
+    void DrawDlgItem(int id, FarDialogItem *pitem) override
     {
-        if ( id != 3 )
+        if (id != 3)
             return;
 
-        CHAR_INFO *VBuf = pitem->VBuf;
+        FAR_CHAR_INFO *vBuf = pitem->VBuf;
 
-        for ( unsigned int i = 0; i < vLines.size(); ++i )
-            for ( unsigned int j = 0; j < W(); ++j )
-                VBuf[i*W()+j].Char.AsciiChar = vLines[i][j];
+        for (size_t i = 0; i < vLines.size(); ++i)
+            for (size_t j = 0; j < W(); ++j )
+                vBuf[i * W() + j].Char = vLines[i][j];
     }
 
-    virtual unsigned long DoGetPrompt() = 0;
+    virtual intptr_t DoGetPrompt() = 0;
 
 protected:
-    unsigned int W() const { static unsigned int W = GetConsoleSize().X*4/5; return W; } // Scroll control width
-    unsigned int H() const { static unsigned int H = GetConsoleSize().Y*2/3; return H; } // Scroll control height
+    unsigned int W() const { static unsigned int W = GetConsoleSize().X*4/5; return W; } // Scroll control width. TODO: Handle dynamically changing console size.
+    unsigned int H() const { static unsigned int H = GetConsoleSize().Y*2/3; return H; } // Scroll control height. TODO: Handle dynamically changing console size.
 
 private:
-    DWORD m_dwLastUserInteraction;  // Tracks the time of the last user interaction
-    std::vector<std::string> vLines;
+    DWORD m_dwLastUserInteraction;
+    std::vector<tstring> vLines;
 };
 
 class Executor : public ScrollLongOperation
 {
 public:
-    Executor( const char *szPluginName, const char *szDir, const std::string& sCmdLine, const boost::function<void(char*)>* const pf = 0, const char *szTmpFile = 0 ) :
-        ScrollLongOperation( szPluginName ),
-        m_szDir( szDir ),
-        m_sCmdLine( sCmdLine ),
-        m_pfNewLineCallback( pf ),
-        m_sTempFileName( szTmpFile ? szTmpFile : "" ),
-        m_sPrompt( ProkrustString( sCmdLine, W() ) )
+    Executor(const TCHAR *szPluginName, const TCHAR *szDir, const tstring& sCmdLine, const boost::function<void(TCHAR*)>& fNewLineCallback, const TCHAR *szTmpFile = 0) :
+        ScrollLongOperation(szPluginName),
+        m_szDir(szDir),
+        m_sCmdLine(sCmdLine),
+        m_fNewLineCallback(fNewLineCallback),
+        m_sTempFileName(szTmpFile ? szTmpFile : _T("")),
+        m_sPrompt(ProkrustString(sCmdLine, W()))
     {}
 
 protected:
-    virtual unsigned long DoGetPrompt() { return reinterpret_cast<unsigned long>( m_sPrompt.c_str() ); }
+    virtual intptr_t DoGetPrompt() override { return reinterpret_cast<intptr_t>(m_sPrompt.c_str()); }
 
-    virtual bool DoExecute()
+    virtual bool DoExecute() override
     {
-        std::string sPipeName = GetTempPipeName();
+        tstring sPipeName = GetTempPipeName();
 
         SECURITY_ATTRIBUTES sa = { sizeof sa, 0, TRUE };
         const unsigned long cdwPipeBufferSize = 1024;
@@ -266,129 +275,126 @@ protected:
         // We have to use named pipe solely because unnamed pipes don't support
         // asynchronous operations
 
-        W32Handle HReadPipe = ENF_H( ::CreateNamedPipe( sPipeName.c_str(),
-                                                        PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
-                                                        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
-                                                        1,
-                                                        cdwPipeBufferSize,
-                                                        cdwPipeBufferSize,
-                                                        500,
-                                                        0 ) );
+        W32Handle HReadPipe = ENF_H(::CreateNamedPipe(sPipeName.c_str(),
+                                                      PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
+                                                      PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
+                                                      1,
+                                                      cdwPipeBufferSize,
+                                                      cdwPipeBufferSize,
+                                                      500,
+                                                      0));
 
-        W32Handle HWritePipe = ENF_H( ::CreateFile( sPipeName.c_str(), GENERIC_WRITE, 0, &sa, OPEN_EXISTING, 0, 0 ) );
+        W32Handle HWritePipe = ENF_H(::CreateFile(sPipeName.c_str(), GENERIC_WRITE, 0, &sa, OPEN_EXISTING, 0, 0));
 
-        W32Handle HProcess = ExecuteConsoleNoWait( m_szDir,
-                                                   m_sCmdLine.c_str(),
-                                                   HWritePipe,
-                                                   m_sTempFileName.empty() ? HWritePipe : 0 );
+        W32Handle HProcess = ExecuteConsoleNoWait(m_szDir,
+                                                  m_sCmdLine.c_str(),
+                                                  HWritePipe,
+                                                  m_sTempFileName.empty() ? HWritePipe : 0);
         HWritePipe.Close();
 
-        if ( !HProcess )
+        if (!HProcess)
         {
-            MsgBoxWarning( GetPluginName(), "Cannot execute external application:\n%s\n%s", m_sCmdLine.c_str(), LastErrorStr().c_str() );
+            MsgBoxWarning(GetPluginName(), _T("Cannot execute external application:\n%s\n%s"), m_sCmdLine.c_str(), LastErrorStr().c_str());
             return false;
         }
 
-        W32Handle HTempFile = !m_sTempFileName.empty() ? ENF_H( ::CreateFile( m_sTempFileName.c_str(), GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0 ) )
+        W32Handle HTempFile = !m_sTempFileName.empty() ? ENF_H(::CreateFile(m_sTempFileName.c_str(), GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0))
                                                        : INVALID_HANDLE_VALUE;
 
-        if ( !HTempFile && !m_sTempFileName.empty() )
+        if (!HTempFile && !m_sTempFileName.empty())
         {
-            MsgBoxWarning( GetPluginName(), "Cannot create temporary file:\n%s\n%s", m_sTempFileName.c_str(), LastErrorStr().c_str() );
+            MsgBoxWarning(GetPluginName(), _T("Cannot create temporary file:\n%s\n%s"), m_sTempFileName.c_str(), LastErrorStr().c_str());
             return false;
         }
 
-        char buf[cdwPipeBufferSize];
+        TCHAR buf[cdwPipeBufferSize];
         DWORD dwRead = 0;
         DWORD dwWritten;
 
         W32Event oe;
         OVERLAPPED o = { 0, 0, 0, 0, oe };
 
-        unsigned long nr = 0;       // Number of lines read
-        bool bIoPending = false;    // Overlapped IO is in progress
-        char szLine[4096] = "";     // Current line is collected here
+        unsigned long nr = 0;         // Number of lines read
+        bool bIoPending = false;      // Overlapped IO is in progress
+        TCHAR szLine[4096] = _T("");  // Current line is collected here
 
         for ( ; ; )
         {
-            if ( !bIoPending && !::ReadFile( HReadPipe, buf, sizeof buf, &dwRead, &o ) )
+            if (!bIoPending && !::ReadFile(HReadPipe, buf, sizeof buf, &dwRead, &o))
             {
-                if ( ::GetLastError() == ERROR_BROKEN_PIPE )
+                if (::GetLastError() == ERROR_BROKEN_PIPE)
                     break;
-                else if ( ENF( ::GetLastError() == ERROR_IO_PENDING ) )
+                else if (ENF(::GetLastError() == ERROR_IO_PENDING))
                     bIoPending = true;
             }
 
-            if ( bIoPending && ::WaitForSingleObjectEx( oe, 1000, TRUE ) == WAIT_OBJECT_0 )
+            if (bIoPending && ::WaitForSingleObjectEx(oe, 1000, TRUE) == WAIT_OBJECT_0)
             {
                 bIoPending = false;
 
-                if ( !::GetOverlappedResult( HReadPipe, &o, &dwRead, FALSE ) && ENF( ::GetLastError() == ERROR_BROKEN_PIPE ) )
+                if (!::GetOverlappedResult(HReadPipe, &o, &dwRead, FALSE) && ENF(::GetLastError() == ERROR_BROKEN_PIPE))
                     break;
             }
 
-            if ( Interaction() )
+            if (UserInteraction())
             {
-                ::TerminateProcess( HProcess, (UINT)-1 );
+                ::TerminateProcess(HProcess, (UINT)-1);
                 return false;
             }
 
-            if ( bIoPending )
+            if (bIoPending)
                 continue;
 
-            if ( HTempFile.IsValid() )
-                ENF( ::WriteFile( HTempFile, buf, dwRead, &dwWritten, 0 ) );
+            if (HTempFile.IsValid())
+                ENF(::WriteFile(HTempFile, buf, dwRead, &dwWritten, 0));
 
-            if ( dwRead > 0 )
+            if (dwRead > 0)
             {
-                for ( char *p = buf; ; )
+                for (TCHAR *p = buf; ;)
                 {
-                    char *pNextEOL = std::find( p, buf+dwRead, '\n' );
+                    TCHAR *pNextEOL = std::find( p, buf + dwRead, '\n' );
                     
-                    if ( pNextEOL > buf && pNextEOL < buf+dwRead && pNextEOL[-1] == '\r' )
-                        pNextEOL[-1] = 0;
+                    if (pNextEOL > buf && pNextEOL < buf + dwRead && pNextEOL[-1] == _T('\r'))
+                        pNextEOL[-1] = _T('\0');
 
-                    array_strncat( szLine, p, pNextEOL-p );
+                    _tcsncat_s(szLine, p, _TRUNCATE);
 
-                    if ( pNextEOL == buf+dwRead )
+                    if (pNextEOL == buf + dwRead)
                         break;
 
-                    if ( m_pfNewLineCallback )
-                        (*m_pfNewLineCallback)( szLine );
+                    m_fNewLineCallback(szLine);
 
-                    Scroll( szLine );
-                    *szLine = 0;
+                    Scroll(szLine);
+                    *szLine = _T('\0');
 
-                    p = pNextEOL+1;
+                    p = pNextEOL + 1;
                 }
             }
 
-            nr += std::count( buf, buf+dwRead, '\n' );
+            nr += static_cast<unsigned long>(std::count(buf, buf + dwRead, _T('\n')));
         }
 
-        if ( *szLine != 0 )
+        if (*szLine != 0)
         {
-            (*m_pfNewLineCallback)( szLine );
-            Scroll( szLine );
-            *szLine = 0;
+            m_fNewLineCallback(szLine);
+            Scroll(szLine);
+            *szLine = _T('\0');
         }
 
-        Interaction( true );  // So that the dialog blinks with the latest data before dying
-        SleepEx( 100, TRUE ); // To increase the probability of latest data appearing onscreen
+        UserInteraction(true);  // So that the dialog displays the latest data before closing
+        SleepEx(100, TRUE);     // To increase the probability of latest data appearing onscreen
 
-        ENF( ::WaitForSingleObjectEx( HProcess, INFINITE, TRUE ) == WAIT_OBJECT_0 );
+        ENF(::WaitForSingleObjectEx(HProcess, INFINITE, TRUE) == WAIT_OBJECT_0);
         
         DWORD dwExitCode;
-        ENF( ::GetExitCodeProcess( HProcess, (LPDWORD)&dwExitCode ) );
+        ENF(::GetExitCodeProcess(HProcess, (LPDWORD)&dwExitCode));
 
         return dwExitCode == 0;
     }
 
-    const char *m_szDir;
-    std::string m_sCmdLine;
-    std::string m_sTempFileName;
-    const boost::function<void(char*)>* m_pfNewLineCallback;
-    std::string m_sPrompt;
+    const TCHAR *m_szDir;
+    tstring m_sCmdLine;
+    tstring m_sTempFileName;
+    const boost::function<void(TCHAR*)>& m_fNewLineCallback;
+    tstring m_sPrompt;
 };
-
-#endif // __LONGOP_H

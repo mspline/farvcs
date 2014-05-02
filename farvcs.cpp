@@ -1,12 +1,3 @@
-/*****************************************************************************
- File name:  farvcs.cpp
- Project:    FarVCS plugin
- Purpose:    The main source file
- Compiler:   MS Visual C++ 8.0
- Authors:    Michael Steinhause
- Dependencies: STL
-*****************************************************************************/
-
 #include <stdio.h>
 #include <string>
 #include <vector>
@@ -17,11 +8,10 @@
 #include <strstream>
 #include <process.h>
 #include <boost/function.hpp>
-#pragma warning(disable:4121)
-#include "plugin.hpp"
-#pragma warning(default:4121)
-#include "farcolor.hpp"
+#include "farsdk/plugin.hpp"
+#include "farsdk/farcolor.hpp"
 #include "miscutil.h"
+#include "winhelpers.h"
 #include "plugutil.h"
 #include "vcs.h"
 #include "regwrap.h"
@@ -41,25 +31,27 @@ FarStandardFunctions FSF;
 HINSTANCE hInstance;           // The DLL module handle
 HINSTANCE hResInst;            // Where to load the resources from
 
-const char *cszPluginName = "VCS Assistant";
+const TCHAR *cszPluginName = _T("VCS Assistant");
+// {8107EF4F-78C3-4ED5-8A3A-6BE16CC5EB1E}
+const GUID PluginGuid = { 0x8107ef4f, 0x78c3, 0x4ed5, { 0x8a, 0x3a, 0x6b, 0xe1, 0x6c, 0xc5, 0xeb, 0x1e } };
 
-char cszDllName[]    = "farvcs.dll";
-char cszCacheFile[]  = "farvcs.csh";
+TCHAR cszDllName[]   = _T("farvcs.dll");
+TCHAR cszCacheFile[] = _T("farvcs.csh");
 
-char *PluginMenuStrings[] = { const_cast<char*>( cszPluginName ) };
+const TCHAR *PluginMenuStrings[] = { cszPluginName };
 
 // The static vars are used to avoid multiple allocations of two-byte blocks in GetFindData
 
-char *cszEmptyLine = "";
+TCHAR *cszEmptyLine = _T("");
 
-char *Stati[] = {  "",  "",   "",  "",  "",  "",  "",  "",  "",  "",  "",  "",   "",  "",  "",  "",
-                   "",  "",   "",  "",  "",  "",  "",  "",  "",  "",  "",  "",   "",  "",  "",  "",
-                  " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+",  ",", "-", ".", "/",
-                  "0", "1",  "2", "3", "4", "5", "6", "7", "8", "9", ":", ";",  "<", "=", ">", "?",
-                  "@", "A",  "B", "C", "D", "E", "F", "G", "H", "I", "J", "K",  "L", "M", "N", "O",
-                  "P", "Q",  "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_",
-                  "`", "a",  "b", "c", "d", "e", "f", "g", "h", "i", "j", "k",  "l", "m", "n", "o",
-                  "p", "q",  "r", "s", "t", "u", "v", "w", "x", "y", "z", "{",  "|", "}", "~", "" };
+TCHAR *Stati[] = { _T(""),  _T(""),   _T(""),   _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),   _T(""),  _T(""),  _T(""),
+                   _T(""),  _T(""),   _T(""),   _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),  _T(""),   _T(""),  _T(""),  _T(""),
+                   _T(" "), _T("!"),  _T("\""), _T("#"), _T("$"), _T("%"), _T("&"), _T("'"), _T("("), _T(")"), _T("*"), _T("+"), _T(","),  _T("-"), _T("."), _T("/"),
+                   _T("0"), _T("1"),  _T("2"),  _T("3"), _T("4"), _T("5"), _T("6"), _T("7"), _T("8"), _T("9"), _T(":"), _T(";"), _T("<"),  _T("="), _T(">"), _T("?"),
+                   _T("@"), _T("A"),  _T("B"),  _T("C"), _T("D"), _T("E"), _T("F"), _T("G"), _T("H"), _T("I"), _T("J"), _T("K"), _T("L"),  _T("M"), _T("N"), _T("O"),
+                   _T("P"), _T("Q"),  _T("R"),  _T("S"), _T("T"), _T("U"), _T("V"), _T("W"), _T("X"), _T("Y"), _T("Z"), _T("["), _T("\\"), _T("]"), _T("^"), _T("_"),
+                   _T("`"), _T("a"),  _T("b"),  _T("c"), _T("d"), _T("e"), _T("f"), _T("g"), _T("h"), _T("i"), _T("j"), _T("k"), _T("l"),  _T("m"), _T("n"), _T("o"),
+                   _T("p"), _T("q"),  _T("r"),  _T("s"), _T("t"), _T("u"), _T("v"), _T("w"), _T("x"), _T("y"), _T("z"), _T("{"), _T("|"),  _T("}"), _T("~"), _T("") };
 
 //==========================================================================>>
 // The list of the directories with dirty files and the list of the
@@ -74,9 +66,9 @@ TSFileSet OutdatedFiles;
 // resources later
 //==========================================================================>>
 
-BOOL WINAPI DllMain( HINSTANCE hInstDll, DWORD dwReason, LPVOID )
+BOOL WINAPI DllMain(HINSTANCE hInstDll, DWORD dwReason, LPVOID)
 {
-    if ( dwReason == DLL_PROCESS_ATTACH )
+    if (dwReason == DLL_PROCESS_ATTACH)
         hInstance = hResInst = hInstDll;
 
     return TRUE;
@@ -102,12 +94,12 @@ public:
         void Save() const;
 
     private:
-        static const char * const cszSettingsKey;
+        static const TCHAR * const cszSettingsKey;
     };
 
     struct Cache
     {
-        Cache( const string& sCacheFile = CatPath(GetLocalAppDataFolder().c_str(),cszCacheFile) ) : sCacheFile_(sCacheFile) {}
+        Cache(const tstring& sCacheFile = CatPath(GetLocalAppDataFolder().c_str(), cszCacheFile)) : sCacheFile_(sCacheFile) {}
 
         void Load()
         {
@@ -144,116 +136,111 @@ public:
         }
 
     private:
-        string sCacheFile_;
+        tstring sCacheFile_;
     };
 
 public:
-    explicit VcsPlugin( const char *pszCurDir, const char *pszItemToStart )
+    explicit VcsPlugin(tstring currentDirectory, tstring currentItem)
     {
-        array_strcpy( szCurDir, pszCurDir );
-        array_strcpy( szItemToStart, pszItemToStart );
+        curDir = currentDirectory;
+        itemToStart = currentItem;
 
-        ColumnTitles1[0] = const_cast<char*>( GetMsg( M_ColumnName ) );
-        ColumnTitles1[1] = const_cast<char*>( GetMsg( M_ColumnS ) );
-        ColumnTitles1[2] = const_cast<char*>( GetMsg( M_ColumnName ) );
-        ColumnTitles1[3] = const_cast<char*>( GetMsg( M_ColumnS ) );
-        ColumnTitles1[4] = const_cast<char*>( GetMsg( M_ColumnName ) );
-        ColumnTitles1[5] = const_cast<char*>( GetMsg( M_ColumnS ) );
+        ColumnTitles1[0] = GetMsg(M_ColumnName);
+        ColumnTitles1[1] = GetMsg(M_ColumnS);
+        ColumnTitles1[2] = GetMsg(M_ColumnName);
+        ColumnTitles1[3] = GetMsg(M_ColumnS);
+        ColumnTitles1[4] = GetMsg(M_ColumnName);
+        ColumnTitles1[5] = GetMsg(M_ColumnS);
 
-        ColumnTitles2[0] = const_cast<char*>( GetMsg( M_ColumnName ) );
-        ColumnTitles2[1] = const_cast<char*>( GetMsg( M_ColumnS ) );
-        ColumnTitles2[2] = const_cast<char*>( GetMsg( M_ColumnName ) );
-        ColumnTitles2[3] = const_cast<char*>( GetMsg( M_ColumnS ) );
+        ColumnTitles2[0] = GetMsg(M_ColumnName);
+        ColumnTitles2[1] = GetMsg(M_ColumnS);
+        ColumnTitles2[2] = GetMsg(M_ColumnName);
+        ColumnTitles2[3] = GetMsg(M_ColumnS);
 
-        ColumnTitles3[0] = const_cast<char*>( GetMsg( M_ColumnName ) );
-        ColumnTitles3[1] = const_cast<char*>( GetMsg( M_ColumnS ) );
-        ColumnTitles3[2] = const_cast<char*>( GetMsg( M_ColumnRev ) );
-        ColumnTitles3[3] = const_cast<char*>( GetMsg( M_ColumnOpt ) );
-        ColumnTitles3[4] = const_cast<char*>( GetMsg( M_ColumnTags ) );
+        ColumnTitles3[0] = GetMsg(M_ColumnName);
+        ColumnTitles3[1] = GetMsg(M_ColumnS);
+        ColumnTitles3[2] = GetMsg(M_ColumnRev);
+        ColumnTitles3[3] = GetMsg(M_ColumnOpt);
+        ColumnTitles3[4] = GetMsg(M_ColumnTags);
 
-        ColumnTitles4[0] = const_cast<char*>( GetMsg( M_ColumnName ) );
-        ColumnTitles4[1] = const_cast<char*>( GetMsg( M_ColumnS ) );
-        ColumnTitles4[2] = const_cast<char*>( GetMsg( M_ColumnRev ) );
-        ColumnTitles4[3] = const_cast<char*>( GetMsg( M_ColumnOpt ) );
-        ColumnTitles4[4] = const_cast<char*>( GetMsg( M_ColumnTags ) );
+        ColumnTitles4[0] = GetMsg(M_ColumnName);
+        ColumnTitles4[1] = GetMsg(M_ColumnS);
+        ColumnTitles4[2] = GetMsg(M_ColumnRev);
+        ColumnTitles4[3] = GetMsg(M_ColumnOpt);
+        ColumnTitles4[4] = GetMsg(M_ColumnTags);
 
-        ::memset( PanelModesArray, 0, sizeof PanelModesArray );
+        ::memset(PanelModesArray, 0, sizeof PanelModesArray);
 
-        PanelModesArray[1].ColumnTypes = "NO,C0,NO,C0,NO,C0";
-        array_sprintf( szColumnWidths1, "0,1,0,1,0,1" );
+        PanelModesArray[1].ColumnTypes = _T("NO,C0,NO,C0,NO,C0");
+        _sntprintf_s(szColumnWidths1, _TRUNCATE, _T("0,1,0,1,0,1"));
         PanelModesArray[1].ColumnWidths = szColumnWidths1;
         PanelModesArray[1].ColumnTitles = ColumnTitles1;
-        PanelModesArray[1].FullScreen = FALSE;
-        PanelModesArray[1].AlignExtensions = TRUE;
-        PanelModesArray[1].StatusColumnTypes = "NOR,S,D,T";
-        PanelModesArray[1].StatusColumnWidths = "0,6,0,5";
+        PanelModesArray[1].StatusColumnTypes = _T("NOR,S,D,T");
+        PanelModesArray[1].StatusColumnWidths = _T("0,6,0,5");
+        PanelModesArray[1].Flags = PMFLAGS_ALIGNEXTENSIONS;
 
-        PanelModesArray[2].ColumnTypes = "NO,C0,NO,C0";
-        array_sprintf( szColumnWidths2, "0,1,0,1" );
+        PanelModesArray[2].ColumnTypes = _T("NO,C0,NO,C0");
+        _sntprintf_s(szColumnWidths2, _TRUNCATE, _T("0,1,0,1"));
         PanelModesArray[2].ColumnWidths = szColumnWidths2;
         PanelModesArray[2].ColumnTitles = ColumnTitles2;
-        PanelModesArray[2].FullScreen = FALSE;
-        PanelModesArray[2].StatusColumnTypes = "NOR,S,D,T";
-        PanelModesArray[2].StatusColumnWidths = "0,6,0,5";
+        PanelModesArray[2].StatusColumnTypes = _T("NOR,S,D,T");
+        PanelModesArray[2].StatusColumnWidths = _T("0,6,0,5");
 
-        PanelModesArray[3].ColumnTypes = "NO,C0,C1,C2,C3";
-        array_sprintf( szColumnWidths3, "0,1,%d,%d,0", nRevColumnWidth, nOptColumnWidth );
+        PanelModesArray[3].ColumnTypes = _T("NO,C0,C1,C2,C3");
+        _sntprintf_s(szColumnWidths3, _TRUNCATE, _T("0,1,%d,%d,0"), nRevColumnWidth, nOptColumnWidth);
         PanelModesArray[3].ColumnWidths = szColumnWidths3;
         PanelModesArray[3].ColumnTitles = ColumnTitles3;
-        PanelModesArray[3].FullScreen = FALSE;
-        PanelModesArray[3].StatusColumnTypes = "NOR,S,D,T";
-        PanelModesArray[3].StatusColumnWidths = "0,6,0,5";
+        PanelModesArray[3].StatusColumnTypes = _T("NOR,S,D,T");
+        PanelModesArray[3].StatusColumnWidths = _T("0,6,0,5");
 
-        PanelModesArray[4].ColumnTypes = "NO,C0,C1,C2,C3";
-        array_sprintf( szColumnWidths4, "0,1,%d,%d,0", nRevColumnWidth, nOptColumnWidth );
+        PanelModesArray[4].ColumnTypes = _T("NO,C0,C1,C2,C3");
+        _sntprintf_s(szColumnWidths4, _TRUNCATE, _T("0,1,%d,%d,0"), nRevColumnWidth, nOptColumnWidth);
         PanelModesArray[4].ColumnWidths = szColumnWidths4;
         PanelModesArray[4].ColumnTitles = ColumnTitles4;
-        PanelModesArray[4].FullScreen = FALSE;
-        PanelModesArray[4].StatusColumnTypes = "NOR,S,D,T";
-        PanelModesArray[4].StatusColumnWidths = "0,6,0,5";
+        PanelModesArray[4].StatusColumnTypes = _T("NOR,S,D,T");
+        PanelModesArray[4].StatusColumnWidths = _T("0,6,0,5");
     }
 
-    void GetOpenPluginInfo( OpenPluginInfo *pInfo );
-    int GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int OpMode );
-    void FreeFindData( PluginPanelItem *pItems, int ItemsNumber );
-    int SetDirectory( const char *Dir, int OpMode );
-    int ProcessKey( int Key, unsigned int ControlState );
-    int ProcessEvent( int Event, void *Param );
+    void GetOpenPanelInfo(OpenPanelInfo *pinfo);
+    intptr_t SetDirectory(const SetDirectoryInfo *pinfo);
+    intptr_t GetFindData(GetFindDataInfo *pinfo);
+    void FreeFindData(const FreeFindDataInfo *pinfo);
+    intptr_t ProcessPanelInput(ProcessPanelInputInfo *pinfo);
+    intptr_t ProcessPanelEvent(const ProcessPanelEventInfo *pinfo);
 
     virtual ~VcsPlugin() {}
 
-    static void StartMonitoringThread() { MonitoringThread.Start( &StartupInfo ); }
-    static void StopMonitoringThread() { MonitoringThread.Stop( 1000 ); }
+    static void StartMonitoringThread() { MonitoringThread.Start(&StartupInfo); }
+    static void StopMonitoringThread() { MonitoringThread.Stop(1000); }
 
 private:
-    char szCurDir[MAX_PATH];
+    tstring curDir;
+    tstring itemToStart; // Where to position the cursor when starting
 
-    char szItemToStart[MAX_PATH]; // Where to position the cursor when starting
+    // Members to be used in GetOpenPanelInfo
 
-    // Members to be used in GetOpenPluginInfo
+    TCHAR szPanelTitle[MAX_PATH];
 
-    char szPanelTitle[MAX_PATH];
+    const TCHAR *ColumnTitles1[6];
+    const TCHAR *ColumnTitles2[4];
+    const TCHAR *ColumnTitles3[5];
+    const TCHAR *ColumnTitles4[5];
 
-    char *ColumnTitles1[6];
-    char *ColumnTitles2[4];
-    char *ColumnTitles3[5];
-    char *ColumnTitles4[5];
-
-    char szColumnWidths1[30];
-    char szColumnWidths2[30];
-    char szColumnWidths3[30];
-    char szColumnWidths4[30];
+    TCHAR szColumnWidths1[30];
+    TCHAR szColumnWidths2[30];
+    TCHAR szColumnWidths3[30];
+    TCHAR szColumnWidths4[30];
 
     PanelMode PanelModesArray[10];
 
     enum { nOptColumnWidth = 5, nRevColumnWidth = 11 }; // Revision column width
 
-    void DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, const string& sTag );
+    void DecoratePanelItem(PluginPanelItem& pi, const VcsEntry& entry, const tstring& sTag);
 
-    // Theading for automatic mode
+    // Threading for automatic mode
 
     static Thread MonitoringThread;
-    static unsigned int MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTerminateEvent);
+    static unsigned int MonitoringThreadRoutine(void *pStartupInfo, HANDLE hTerminateEvent);
 
     vector<TempFile> TempFiles;
 };
@@ -265,54 +252,44 @@ private:
 VcsPlugin::PluginSettings Settings;
 VcsPlugin::Cache          Cache;
 
-const char * const VcsPlugin::PluginSettings::cszSettingsKey = "HKEY_CURRENT_USER\\Software\\FAR\\Plugins\\FarVCS";
+const TCHAR * const VcsPlugin::PluginSettings::cszSettingsKey = _T("HKEY_CURRENT_USER\\Software\\FAR\\Plugins\\FarVCS");
 
 void VcsPlugin::PluginSettings::Load()
 {
-    RegWrap rkey( cszSettingsKey );
-    bAutomaticMode = rkey.ReadDword( "bAutomaticMode" ) != 0;
+    RegWrap rkey(cszSettingsKey);
+    bAutomaticMode = rkey.ReadDword(_T("bAutomaticMode")) != 0;
 
-    string sPanelMode = rkey.ReadString( "cPanelMode" );
+    tstring sPanelMode = rkey.ReadString(_T("cPanelMode"));
     cPanelMode = sPanelMode.empty() || !isdigit(sPanelMode[0]) ? 0 : sPanelMode[0];
 
     // CVS
 
-    nCompressionLevel = rkey.ReadDword( "nCompressionLevel" );
+    nCompressionLevel = rkey.ReadDword(_T("nCompressionLevel"));
 }
 
 void VcsPlugin::PluginSettings::Save() const
 {
-    RegWrap rkey( cszSettingsKey, KEY_ALL_ACCESS );
-    rkey.WriteDword ( "bAutomaticMode",    bAutomaticMode );
-    rkey.WriteString( "cPanelMode",        string(1,cPanelMode) );
+    RegWrap rkey(cszSettingsKey, KEY_ALL_ACCESS);
+    rkey.WriteDword (_T("bAutomaticMode"), bAutomaticMode);
+    rkey.WriteString(_T("cPanelMode"), tstring(1, cPanelMode));
 
     // CVS
 
-    rkey.WriteDword( "nCompressionLevel", nCompressionLevel );
+    rkey.WriteDword(_T("nCompressionLevel"), nCompressionLevel);
 }
 
 //==========================================================================>>
 // Exported interface functions and forwarders
 //==========================================================================>>
 
-int WINAPI _export GetMinFarVersion()
-{
-    return MAKEFARVERSION( 1, 70, 0 );
-}
-
 void ApplyAutomaticModeFromSettings()
 {
-    if ( Settings.bAutomaticMode )
+    if (Settings.bAutomaticMode)
     {
         // Warn the user if there is no hotkey assigned to our plugin in the plugin menu: we won't be able to autostart the panel
 
-        if ( !GetPluginHotkey( cszDllName ) )
-            StartupInfo.Message( StartupInfo.ModuleNumber,
-                                 FMSG_WARNING | FMSG_ALLINONE | FMSG_MB_OK,
-                                 0,   // Help topic
-                                 (const char * const *)((string(cszPluginName) + "\n" + GetMsg( M_MsgNoHotkey )).c_str()),
-                                 0,   // Items number
-                                 0 ); // Buttons number
+        if (!GetPluginHotkey(cszDllName))
+            MsgBoxWarning(cszPluginName, _T("%s"), GetMsg(M_MsgNoHotkey));
 
         VcsPlugin::StartMonitoringThread();
     }
@@ -322,10 +299,13 @@ void ApplyAutomaticModeFromSettings()
     }
 }
 
-void WINAPI _export SetStartupInfo( const PluginStartupInfo *pPluginStartupInfo )
+void WINAPI SetStartupInfoW(const PluginStartupInfo *pinfo)
 {
-    StartupInfo = *pPluginStartupInfo;
-    FSF = *pPluginStartupInfo->FSF;
+    if (pinfo->StructSize < sizeof(PluginStartupInfo))
+        return;
+
+    StartupInfo = *pinfo;
+    FSF = *pinfo->FSF;
     StartupInfo.FSF = &FSF;
 
     Settings.Load();
@@ -333,163 +313,189 @@ void WINAPI _export SetStartupInfo( const PluginStartupInfo *pPluginStartupInfo 
     ApplyAutomaticModeFromSettings();
 }
 
-void WINAPI _export GetPluginInfo( PluginInfo *pInfo )
+void WINAPI GetPluginInfoW(PluginInfo *pinfo)
 {
-    pInfo->StructSize = sizeof PluginInfo;
-    pInfo->Flags = PF_PRELOAD;
-    pInfo->DiskMenuStrings = 0;
-    pInfo->DiskMenuNumbers = 0;
-    pInfo->DiskMenuStringsNumber = 0;
-    pInfo->PluginMenuStrings = PluginMenuStrings;
-    pInfo->PluginMenuStringsNumber = array_size(PluginMenuStrings);
-    pInfo->PluginConfigStrings = PluginMenuStrings;
-    pInfo->PluginConfigStringsNumber = array_size(PluginMenuStrings);
-    pInfo->CommandPrefix = 0;
+    pinfo->StructSize = sizeof PluginInfo;
+    pinfo->Flags = PF_PRELOAD;
+
+    pinfo->PluginMenu.Guids = &PluginGuid; // !!!
+    pinfo->PluginMenu.Strings = PluginMenuStrings;
+    pinfo->PluginMenu.Count = _countof(PluginMenuStrings);
+
+    pinfo->PluginConfig.Guids = &PluginGuid; // !!!
+    pinfo->PluginConfig.Strings = PluginMenuStrings;
+    pinfo->PluginConfig.Count = _countof(PluginMenuStrings);
 }
 
-HANDLE WINAPI _export OpenPlugin( int /*OpenFrom*/, int /*Item*/ )
+tstring GetPanelDir(HANDLE hPanel = PANEL_ACTIVE)
 {
-    PanelInfo pi;
-    StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_GETPANELINFO, &pi );
+    intptr_t requiredSize = StartupInfo.PanelControl(hPanel, FCTL_GETPANELDIRECTORY, 0, nullptr);
 
-    if ( pi.PanelType != PTYPE_FILEPANEL )
-        return INVALID_HANDLE_VALUE;
+    if (requiredSize <= 0)
+        return _T("");
 
-    return new VcsPlugin( pi.CurDir, pi.ItemsNumber > 0 ? pi.PanelItems[pi.CurrentItem].FindData.cFileName : "" ); // Deleted in ClosePlugin
+    unique_ptr<char[]> pbuf{ new char[requiredSize] }; // Replace with make_unique as soon as compiler supports it.
+    StartupInfo.PanelControl(hPanel, FCTL_GETPANELDIRECTORY, requiredSize, pbuf.get());
+
+    return reinterpret_cast<FarPanelDirectory*>(pbuf.get())->Name;
 }
 
-void WINAPI _export ClosePlugin( HANDLE hPlugin )
+tstring GetCurrentItem(HANDLE hPanel = PANEL_ACTIVE)
 {
-    delete reinterpret_cast<VcsPlugin*>( hPlugin );
-}
+    intptr_t requiredSize = StartupInfo.PanelControl(hPanel, FCTL_GETCURRENTPANELITEM, 0, nullptr);
 
-int  WINAPI _export SetDirectory     ( HANDLE hPlugin, const char *pszDir, int OpMode )                           { return reinterpret_cast<VcsPlugin*>( hPlugin )->SetDirectory( pszDir, OpMode ); }
-void WINAPI _export GetOpenPluginInfo( HANDLE hPlugin, OpenPluginInfo *pInfo )                                    {        reinterpret_cast<VcsPlugin*>( hPlugin )->GetOpenPluginInfo( pInfo ); }
-int  WINAPI _export GetFindData      ( HANDLE hPlugin, PluginPanelItem **ppItems, int *pItemsNumber, int OpMode ) { return reinterpret_cast<VcsPlugin*>( hPlugin )->GetFindData( ppItems, pItemsNumber, OpMode ); }
-void WINAPI _export FreeFindData     ( HANDLE hPlugin, PluginPanelItem *pItems, int ItemsNumber )                 {        reinterpret_cast<VcsPlugin*>( hPlugin )->FreeFindData( pItems, ItemsNumber ); }
-int  WINAPI _export ProcessKey       ( HANDLE hPlugin, int Key, unsigned int ControlState )                       { return reinterpret_cast<VcsPlugin*>( hPlugin )->ProcessKey( Key, ControlState ); }
-int  WINAPI _export ProcessEvent     ( HANDLE hPlugin, int Event, void *Param )                                   { return reinterpret_cast<VcsPlugin*>( hPlugin )->ProcessEvent( Event, Param ); }
+    if (requiredSize <= 0)
+        return _T("");
 
-int WINAPI _export Configure( int /*ItemNumber*/ )
-{
-    // We expect the settings having been already loaded during the preceding call to SetStartupInfo
+    unique_ptr<char[]> pbuf{ new char[requiredSize] }; // Replace with make_unique as soon as compiler supports it.
 
-    InitDialogItem InitItems[] =
+    FarGetPluginPanelItem gpi
     {
-        /* 0 */ { DI_DOUBLEBOX, 3,1,52,7,  0,0, 0,                            0, const_cast<char*>( cszPluginName )              },
-        /* 1 */ { DI_CHECKBOX,  5,2,0,0,   0,0, 0,                            0, const_cast<char*>( GetMsg( M_AutomaticMode ) )  },
-        /* 2 */ { DI_TEXT,      5,3,0,0,   0,0, DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""                                              },
-        /* 3 */ { DI_FIXEDIT,   6,4,6,4,   0,0, 0,                            0, ""                                              },
-        /* 4 */ { DI_TEXT,      8,4,50,4,  0,0, 0,                            0, const_cast<char*>( GetMsg( M_PanelModeLabel ) ) },
-        /* 5 */ { DI_TEXT,      5,5,0,0,   0,0, DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""                                              },
-        /* 6 */ { DI_BUTTON,    0,6,0,0,   0,0, DIF_CENTERGROUP,              1, const_cast<char*>( GetMsg( M_Ok ) )             },
-        /* 7 */ { DI_BUTTON,    0,6,0,0,   0,0, DIF_CENTERGROUP,              0, const_cast<char*>( GetMsg( M_Cancel ) )         }
+        sizeof FarGetPluginPanelItem,
+        requiredSize,
+        reinterpret_cast<PluginPanelItem*>(pbuf.get())
     };
 
-    enum { dwItemNum = sizeof InitItems / sizeof *InitItems };
-
-    struct FarDialogItem DialogItems[dwItemNum];
-    InitDialogItems( InitItems, DialogItems, dwItemNum );
-
-    DialogItems[1].Selected = Settings.bAutomaticMode;
-    DialogItems[3].Data[0] = Settings.cPanelMode;
-    DialogItems[3].Data[1] = 0;
-
-    int ExitCode = StartupInfo.Dialog( StartupInfo.ModuleNumber, -1, -1, 56, 9, 0, DialogItems, dwItemNum );
-    if ( ExitCode != 6 )
-        return FALSE;
-
-    Settings.bAutomaticMode = DialogItems[1].Selected != 0;
-    Settings.cPanelMode = DialogItems[3].Data[0] && isdigit(DialogItems[3].Data[0]) ? DialogItems[3].Data[0] : 0;
-
-    Settings.Save();
-
-    ApplyAutomaticModeFromSettings();
-    return TRUE;
+    StartupInfo.PanelControl(hPanel, FCTL_GETCURRENTPANELITEM, 0, &gpi);
+    return gpi.Item->FileName;
 }
 
-void WINAPI _export ExitFAR()
+HANDLE WINAPI OpenW(const struct OpenInfo *pinfo)
 {
-    if ( Settings.bAutomaticMode )
+    if (pinfo->StructSize < sizeof(OpenInfo))
+        return nullptr;
+
+    if (pinfo->OpenFrom != OPEN_FILEPANEL &&
+        pinfo->OpenFrom != OPEN_PLUGINSMENU &&
+        pinfo->OpenFrom != OPEN_SHORTCUT)
+        return nullptr;
+
+    FarPanelDirectory fpd{ sizeof FarPanelDirectory };
+
+    return new VcsPlugin(GetPanelDir(), GetCurrentItem()); // Deleted in ClosePlugin
+}
+
+void WINAPI ClosePanelW(const ClosePanelInfo *pinfo)
+{
+    delete reinterpret_cast<VcsPlugin*>(pinfo->hPanel);
+}
+
+intptr_t WINAPI SetDirectoryW     (const SetDirectoryInfo *pinfo)      { return reinterpret_cast<VcsPlugin*>(pinfo->hPanel)->SetDirectory(pinfo);      }
+void     WINAPI GetOpenPanelInfoW (OpenPanelInfo *pinfo)               {        reinterpret_cast<VcsPlugin*>(pinfo->hPanel)->GetOpenPanelInfo(pinfo);  }
+intptr_t WINAPI GetFindDataW      (GetFindDataInfo *pinfo)             { return reinterpret_cast<VcsPlugin*>(pinfo->hPanel)->GetFindData(pinfo);       }
+void     WINAPI FreeFindDataW     (const FreeFindDataInfo *pinfo)      {        reinterpret_cast<VcsPlugin*>(pinfo->hPanel)->FreeFindData(pinfo);      }
+intptr_t WINAPI ProcessPanelInputW(ProcessPanelInputInfo *pinfo)       { return reinterpret_cast<VcsPlugin*>(pinfo->hPanel)->ProcessPanelInput(pinfo); }
+intptr_t WINAPI ProcessPanelEventW(const ProcessPanelEventInfo *pinfo) { return reinterpret_cast<VcsPlugin*>(pinfo->hPanel)->ProcessPanelEvent(pinfo); }
+
+//!!! Revise and uncomment
+//intptr_t WINAPI ConfigureW(const ConfigureInfo *pinfo)
+//{
+//    // We expect the settings having been already loaded during the preceding call to SetStartupInfo
+//
+//    InitDialogItem InitItems[] =
+//    {
+//        /* 0 */ { DI_DOUBLEBOX, 3,1,52,7,  0,0, 0,                            0, const_cast<char*>( cszPluginName )              },
+//        /* 1 */ { DI_CHECKBOX,  5,2,0,0,   0,0, 0,                            0, const_cast<char*>( GetMsg( M_AutomaticMode ) )  },
+//        /* 2 */ { DI_TEXT,      5,3,0,0,   0,0, DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""                                              },
+//        /* 3 */ { DI_FIXEDIT,   6,4,6,4,   0,0, 0,                            0, ""                                              },
+//        /* 4 */ { DI_TEXT,      8,4,50,4,  0,0, 0,                            0, const_cast<char*>( GetMsg( M_PanelModeLabel ) ) },
+//        /* 5 */ { DI_TEXT,      5,5,0,0,   0,0, DIF_BOXCOLOR | DIF_SEPARATOR, 0, ""                                              },
+//        /* 6 */ { DI_BUTTON,    0,6,0,0,   0,0, DIF_CENTERGROUP,              1, const_cast<char*>( GetMsg( M_Ok ) )             },
+//        /* 7 */ { DI_BUTTON,    0,6,0,0,   0,0, DIF_CENTERGROUP,              0, const_cast<char*>( GetMsg( M_Cancel ) )         }
+//    };
+//
+//    enum { dwItemNum = sizeof InitItems / sizeof *InitItems };
+//
+//    struct FarDialogItem DialogItems[dwItemNum];
+//    InitDialogItems( InitItems, DialogItems, dwItemNum );
+//
+//    DialogItems[1].Selected = Settings.bAutomaticMode;
+//    DialogItems[3].Data[0] = Settings.cPanelMode;
+//    DialogItems[3].Data[1] = 0;
+//
+//    int ExitCode = StartupInfo.Dialog( StartupInfo.ModuleNumber, -1, -1, 56, 9, 0, DialogItems, dwItemNum );
+//    if ( ExitCode != 6 )
+//        return FALSE;
+//
+//    Settings.bAutomaticMode = DialogItems[1].Selected != 0;
+//    Settings.cPanelMode = DialogItems[3].Data[0] && isdigit(DialogItems[3].Data[0]) ? DialogItems[3].Data[0] : 0;
+//
+//    Settings.Save();
+//
+//    ApplyAutomaticModeFromSettings();
+//    return TRUE;
+//}
+
+void WINAPI ExitFARW(const ExitInfo *)
+{
+    if (Settings.bAutomaticMode)
         VcsPlugin::StopMonitoringThread();
 }
 
-//==========================================================================>>
-// Accepts an order to change the current directory
-//==========================================================================>>
-
-int VcsPlugin::SetDirectory( const char *pszDir, int /*OpMode*/ )
+/// <summary>
+/// Called by Far to change the current directory of the plugin's panel.
+/// </summary>
+intptr_t VcsPlugin::SetDirectory(const SetDirectoryInfo *pinfo)
 {
-    string sNewDir = CatPath( szCurDir, pszDir );
+    tstring newDir = CatPath(curDir.c_str(), pinfo->Dir);
 
     // Check if the directory acutally exists
 
-    DWORD dwAttributes = ::GetFileAttributes( sNewDir.c_str() );
-    if ( dwAttributes == (DWORD)-1 || (dwAttributes | FILE_ATTRIBUTE_DIRECTORY) == 0 )
-        return FALSE;
+    DWORD dwAttributes = ::GetFileAttributes(newDir.c_str());
+    if (dwAttributes == (DWORD)-1 || (dwAttributes | FILE_ATTRIBUTE_DIRECTORY) == 0)
+        return 0;
 
-    array_strcpy( szCurDir, sNewDir.c_str() );
-    ::SetCurrentDirectory( szCurDir );
+    curDir = newDir;
+    ::SetCurrentDirectory(curDir.c_str());
 
-    if ( ::Settings.bAutomaticMode && !IsVcsDir( sNewDir ) )
-        StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_CLOSEPLUGIN, szCurDir );
+    if (::Settings.bAutomaticMode && !IsVcsDir(newDir))
+        StartupInfo.PanelControl(PANEL_ACTIVE, FCTL_CLOSEPANEL, 0, reinterpret_cast<void*>(const_cast<TCHAR*>(curDir.c_str())));
 
-    return TRUE;
+    return 1;
 }
 
-//==========================================================================>>
-// GetOpenPluginInfo
-//==========================================================================>>
-
-void VcsPlugin::GetOpenPluginInfo( OpenPluginInfo *pInfo )
+/// <summary>
+/// Called by Far before opening a plugin panel.
+/// </summary>
+void VcsPlugin::GetOpenPanelInfo(OpenPanelInfo *pinfo)
 {
-    pInfo->StructSize = sizeof OpenPluginInfo;
-    pInfo->Flags = OPIF_USEFILTER | OPIF_USESORTGROUPS | OPIF_USEHIGHLIGHTING | OPIF_SHOWPRESERVECASE |
-                   OPIF_REALNAMES | OPIF_EXTERNALGET | OPIF_EXTERNALPUT | OPIF_EXTERNALDELETE | OPIF_EXTERNALMKDIR;
-    pInfo->HostFile = 0;
-    pInfo->CurDir = szCurDir;
-    pInfo->Format = 0;
+    pinfo->StructSize = sizeof OpenPanelInfo;
+    pinfo->Flags = OPIF_REALNAMES | OPIF_SHOWPRESERVECASE | OPIF_EXTERNALGET | OPIF_EXTERNALPUT | OPIF_EXTERNALDELETE | OPIF_EXTERNALMKDIR;
+    pinfo->CurDir = curDir.c_str(); // ??? Can we specify 0 here?
 
-    string sLabel = !IsVcsDir(szCurDir) ? "VCS" : GetVcsData(szCurDir)->getTag();
+    tstring sLabel = !IsVcsDir(curDir) ? _T("VCS") : GetVcsData(curDir)->getTag();
 
-    if ( sLabel.empty() )
-        sLabel = "TRUNK";
+    if (sLabel.empty())
+        sLabel = _T("TRUNK");
     
-    array_sprintf( szPanelTitle, " [%s] %s ", sLabel.c_str(), szCurDir );
-    pInfo->PanelTitle = szPanelTitle;
+    _sntprintf_s(szPanelTitle, _TRUNCATE, _T(" [%s] %s "), sLabel.c_str(), curDir.c_str());
+    pinfo->PanelTitle = szPanelTitle;
 
-    pInfo->InfoLines = 0;
-    pInfo->InfoLinesNumber = 0;
-    pInfo->DescrFiles = 0;
-    pInfo->DescrFilesNumber = 0;
+    pinfo->PanelModesArray = PanelModesArray;
+    pinfo->PanelModesNumber = _countof(PanelModesArray);
 
-    pInfo->PanelModesArray = PanelModesArray;
-    pInfo->PanelModesNumber = array_size(PanelModesArray);
-
-    pInfo->StartPanelMode = Settings.cPanelMode;
-    pInfo->StartSortMode = SM_DESCR;
-    pInfo->StartSortOrder = 0;
-    pInfo->KeyBar = 0;
-    pInfo->ShortcutData = 0;
+    pinfo->StartPanelMode = Settings.cPanelMode;
+    pinfo->StartSortMode = SM_DESCR;
+    pinfo->StartSortOrder = 0;
 }
 
 //==========================================================================>>
 // Decorate the panel item with the VCS-related data
 //==========================================================================>>
 
-void VcsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, const string& sTag )
+void VcsPlugin::DecoratePanelItem(PluginPanelItem& pi, const VcsEntry& entry, const tstring& sTag)
 {
-    if ( strcmp( pi.FindData.cFileName, ".." ) == 0 )
+    if (_tcscmp(pi.FileName, _T("..")) == 0)
         return;
 
     // Allocate storage for and fill custom columns values
 
     const int nCustomColumns = 4;
 
-    pi.CustomColumnData = new char*[nCustomColumns];
-    pi.CustomColumnNumber = nCustomColumns;
-    for ( int i = 0; i < nCustomColumns; ++i )
-        pi.CustomColumnData[i] = cszEmptyLine;
+    unique_ptr<TCHAR*[]> pCols{ new TCHAR*[nCustomColumns] };
+
+    for (int i = 0; i < nCustomColumns; ++i)
+        pCols[i] = cszEmptyLine;
 
     EVcsStatus fs = entry.status;
 
@@ -504,8 +510,8 @@ void VcsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, c
                    fs == fsGhost     ? '!' :
                                        ' ';
 
-    if ( cStatus != ' ' )
-        pi.CustomColumnData[0] = Stati[cStatus];
+    if (cStatus != ' ')
+        pCols[0] = Stati[cStatus];
 
     pi.Description = Stati[ fs == fsAdded     ? '2' :
                             fs == fsRemoved   ? '3' :
@@ -517,117 +523,140 @@ void VcsPlugin::DecoratePanelItem( PluginPanelItem& pi, const VcsEntry& entry, c
                             fs == fsIgnored   ? '9' :
                                                 '6'   ];   // For sorting
 
-    if ( !IsVcsFile( fs ) ) {
-        pi.FindData.dwFileAttributes |= FILE_ATTRIBUTE_TEMPORARY;
+    if (!IsVcsFile(fs))
+    {
+        pi.FileAttributes |= FILE_ATTRIBUTE_TEMPORARY;
+
+        pi.CustomColumnData = pCols.release();
+        pi.CustomColumnNumber = nCustomColumns;
+
         return;
     }
 
-    if ( fs == fsGhost || fs == fsAddedRepo || fs == fsRemoved )
-        pi.FindData.dwFileAttributes |= (entry.bDir ? FILE_ATTRIBUTE_DIRECTORY : 0) | FILE_ATTRIBUTE_HIDDEN;
+    if (fs == fsGhost || fs == fsAddedRepo || fs == fsRemoved)
+        pi.FileAttributes |= (entry.bDir ? FILE_ATTRIBUTE_DIRECTORY : 0) | FILE_ATTRIBUTE_HIDDEN;
 
-    if ( IsFileDirty( fs ) )
-        pi.FindData.dwFileAttributes |= FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED;
+    if (IsFileDirty(fs))
+        pi.FileAttributes |= FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED;
 
-    if ( !entry.sRevision.empty() ) {
-        pi.CustomColumnData[1] = new char[nRevColumnWidth+1];
-        _snprintf( pi.CustomColumnData[1], nRevColumnWidth, "%*s", nRevColumnWidth, fs == fsAdded ? "Added" : entry.sRevision.c_str() );
-        pi.CustomColumnData[1][nRevColumnWidth] = 0;
+    if (!entry.sRevision.empty())
+    {
+        pCols[1] = new TCHAR[nRevColumnWidth + 1];
+        _sntprintf_s(pCols[1], nRevColumnWidth + 1, _TRUNCATE, _T("%*s"), nRevColumnWidth, fs == fsAdded ? _T("Added") : entry.sRevision.c_str());
+        pCols[1][nRevColumnWidth] = 0;
     }
 
-    if ( !entry.sOptions.empty() ) {
-        pi.CustomColumnData[2] = new char[nOptColumnWidth+1];
-        _snprintf( pi.CustomColumnData[2], nOptColumnWidth, "%-*s", nOptColumnWidth, entry.sOptions.c_str() );
-        pi.CustomColumnData[2][nOptColumnWidth] = 0;
+    if (!entry.sOptions.empty())
+    {
+        pCols[2] = new TCHAR[nOptColumnWidth + 1];
+        _sntprintf_s(pCols[2], nOptColumnWidth + 1, _TRUNCATE, _T("%-*s"), nOptColumnWidth, entry.sOptions.c_str());
+        pCols[2][nOptColumnWidth] = 0;
     }
 
-    if ( entry.bDir ) {
-        if ( !sTag.empty() ) {
-            pi.CustomColumnData[3] = new char[sTag.length()+1];
-            strcpy( pi.CustomColumnData[3], sTag.c_str() );
+    if (entry.bDir) {
+        if (!sTag.empty()) {
+            pCols[3] = new TCHAR[sTag.length() + 1];
+            _tcscpy_s(pCols[3], sTag.length() + 1, sTag.c_str());
         }
     }
     else {
-        if ( !entry.sTagdate.empty() ) {
-            pi.CustomColumnData[3] = new char[entry.sTagdate.size()+1];
-            strcpy( pi.CustomColumnData[3], entry.sTagdate.c_str() + (entry.sTagdate.empty() ? 0 : 1) );
+        if (!entry.sTagdate.empty()) {
+            pCols[3] = new TCHAR[entry.sTagdate.size() + 1];
+            _tcscpy_s(pCols[3], entry.sTagdate.size() + 1, entry.sTagdate.c_str() + (entry.sTagdate.empty() ? 0 : 1));
         }
     }
+
+    pi.CustomColumnData = pCols.release();
+    pi.CustomColumnNumber = nCustomColumns;
 }
 
-//==========================================================================>>
-// Prepare the file list for the panel
-//==========================================================================>>
-
-int VcsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*OpMode*/ )
+// Return by value -- relying on NRVO
+PluginPanelItem W32FindDataToPluginPanelItem(const WIN32_FIND_DATA& findData)
 {
+    PluginPanelItem pi;
+    memset(&pi, 0, sizeof pi);
+
+    pi.CreationTime = findData.ftCreationTime;
+    pi.LastAccessTime = findData.ftLastAccessTime;
+    pi.LastWriteTime = findData.ftLastWriteTime;
+    pi.FileSize = (unsigned long long)findData.nFileSizeHigh << 32 | findData.nFileSizeLow;
+    pi.Flags = PPIF_NONE;
+    pi.FileAttributes = findData.dwFileAttributes;
+    pi.FileName = _tcsdup(findData.cFileName);
+    pi.AlternateFileName = _tcsdup(findData.cAlternateFileName);
+
+    return pi;
+}
+
+/// <summary>
+/// Called by Far to get the file list for the panel.
+/// </summary>
+intptr_t VcsPlugin::GetFindData(GetFindDataInfo *pinfo)
+{
+    pinfo->StructSize = sizeof GetFindDataInfo;
+
     // Read the VCS data (does nothing if not in a VCS-controlled directory)
 
-    boost::intrusive_ptr<IVcsData> apVcsData = GetVcsData( szCurDir );
+    boost::intrusive_ptr<IVcsData> pVcsData = GetVcsData(curDir);
 
     // Enumerate all the file entries in the current directory
 
-    *ppItems = 0;
-    *pItemsNumber = 0;
+    vector<PluginPanelItem> v;
+    v.reserve(1000); // Just a guess
 
-    PluginPanelItem pi;
-    memset( &pi, 0, sizeof PluginPanelItem );
-
-    vector<PluginPanelItem> v; // Let the vector do all the allocation/reallocation work
-    v.reserve( 512 );          // It is rare that a directory contains more entries
-
-    if ( apVcsData && apVcsData->IsValid() )
+    if (pVcsData && pVcsData->IsValid())
     {
-        for ( VcsEntries::iterator p = apVcsData->entries().begin(); p != apVcsData->entries().end(); ++p )
+        for (const auto& entry : pVcsData->entries())
         {
-            memset( &pi, 0, sizeof PluginPanelItem );
-            pi.FindData = p->second.fileFindData;
+            PluginPanelItem pi = W32FindDataToPluginPanelItem(entry.second.fileFindData);
 
-            if ( p->second.bDir )
+            if (entry.second.bDir)
             {
-                pi.FindData.dwFileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
-                string sFullPathName = CatPath( szCurDir, p->first.c_str() );
-                
-                if ( DirtyDirs.ContainsDown( sFullPathName ) )
-                    p->second.status = fsModified;
-                else if ( OutdatedFiles.ContainsDown( sFullPathName ) )
-                    p->second.status = fsOutdated;
+                pi.FileAttributes |= FILE_ATTRIBUTE_DIRECTORY;
+                tstring sFullPathName = CatPath(curDir.c_str(), entry.first.c_str());
+
+                // !!! What is going on here?
+                // if (DirtyDirs.ContainsDown(sFullPathName))
+                //     entry.second.status = fsModified;
+                // else if (OutdatedFiles.ContainsDown(sFullPathName))
+                //     entry.second.status = fsOutdated;
             }
 
-            array_strcpy( pi.FindData.cFileName, strcmp(p->first.c_str(),"..") == 0 ? ".." : CatPath(szCurDir,p->first.c_str()).c_str() );
-            DecoratePanelItem( pi, p->second, apVcsData->getTag() );
+            //array_strcpy( pi.FindData.cFileName, strcmp(p->first.c_str(),"..") == 0 ? ".." : CatPath(szCurDir,p->first.c_str()).c_str() );
+            DecoratePanelItem(pi, entry.second, pVcsData->getTag());
             v.push_back( pi );
         }
     }
     else
     {
-        for ( dir_iterator p = dir_iterator(szCurDir,true); p != dir_iterator(); ++p )
+        for (dir_iterator p = dir_iterator(curDir, true); p != dir_iterator(); ++p)
         {
-            if ( strcmp( p->cFileName, "." ) == 0 )
+            if (_tcscmp(p->cFileName, _T(".")) == 0)
                 continue;
 
-            memset( &pi, 0, sizeof PluginPanelItem );
-            pi.FindData = *p;
-            array_strcpy( pi.FindData.cFileName, strcmp(p->cFileName,"..") == 0 ? ".." : CatPath(szCurDir,p->cFileName).c_str() );
+            PluginPanelItem pi = W32FindDataToPluginPanelItem(*p);
+            //array_strcpy(pi.FindData.cFileName, strcmp(p->cFileName, "..") == 0 ? ".." : CatPath(szCurDir, p->cFileName).c_str());
             v.push_back( pi );
         }
     }
 
     // Convert the data into old-fashioned format required by FAR
 
-    if ( v.size() > 0 )
+    if (!v.empty())
     {
-        *ppItems = new PluginPanelItem[v.size()];
-        *pItemsNumber = v.size();
-        memcpy( *ppItems, &v[0], v.size() * sizeof PluginPanelItem );
+        pinfo->PanelItem = new PluginPanelItem[v.size()];
+        memcpy(pinfo->PanelItem, &v[0], v.size() * sizeof PluginPanelItem);
+        pinfo->ItemsNumber = v.size();
     }
 
-    if ( !apVcsData )
-        return TRUE;
+    if (pVcsData == nullptr)
+        return 1;
 
     // Make sure the non-existing files are not selected
 
+    /* !!! Review and uncomment
     PanelInfo pinfo;
-    StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_GETPANELINFO, &pinfo );
+    StartupInfo.Control(INVALID_HANDLE_VALUE, FCTL_GETPANELINFO, &pinfo );
 
     bool bSomeSelectionChanged = false;
 
@@ -650,19 +679,25 @@ int VcsPlugin::GetFindData( PluginPanelItem **ppItems, int *pItemsNumber, int /*
         if ( bSomeSelectionChanged )
             StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_SETSELECTION, &pinfo );
     }
-
-    return TRUE;
+    */
+    return 1;
 }
 
-void VcsPlugin::FreeFindData( PluginPanelItem *pItems, int ItemsNumber )
+void VcsPlugin::FreeFindData(const FreeFindDataInfo *pinfo)
 {
-    for ( int i = 0; i < ItemsNumber; ++i ) {
-        for ( int j = 1; j < pItems[i].CustomColumnNumber; ++j ) // The zeroth item is the status and it is static
-            if ( pItems[i].CustomColumnData[j] != cszEmptyLine )
-                delete [] pItems[i].CustomColumnData[j];
-        delete pItems[i].CustomColumnData;
+    for (int i = 0; i < pinfo->ItemsNumber; ++i)
+    {
+        for (int j = 1; j < pinfo->PanelItem[i].CustomColumnNumber; ++j) // The zeroth item is the status and it's static
+            if (pinfo->PanelItem[i].CustomColumnData[j] != cszEmptyLine)
+                delete[] pinfo->PanelItem[i].CustomColumnData[j];
+
+        delete[] pinfo->PanelItem[i].CustomColumnData;
+
+        free(reinterpret_cast<void*>(const_cast<TCHAR*>(pinfo->PanelItem[i].FileName)));
+        free(reinterpret_cast<void*>(const_cast<TCHAR*>(pinfo->PanelItem[i].AlternateFileName)));
     }
-    delete [] pItems;
+
+    delete[] pinfo->PanelItem;
 }
 
 //==========================================================================>>
@@ -670,15 +705,16 @@ void VcsPlugin::FreeFindData( PluginPanelItem *pItems, int ItemsNumber )
 // when starting the plugin panel
 //==========================================================================>>
 
-int VcsPlugin::ProcessEvent( int Event, void * /*Param*/ )
+intptr_t VcsPlugin::ProcessPanelEvent(const ProcessPanelEventInfo *pinfo)
 {
-    if ( Event == FE_REDRAW )
+    /* !!! Revise and uncomment
+    if (pinfo->Event == FE_REDRAW)
     {
-        if ( *szItemToStart == 0 )
+        if (itemToStart.empty())
             return FALSE;
 
-        string sItemToStart( szItemToStart );
-        *szItemToStart = 0;
+        tstring sItemToStart{ itemToStart };
+        itemToStart.clear();
 
         PanelInfo pinfo;
         StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_GETPANELINFO, &pinfo );
@@ -701,16 +737,17 @@ int VcsPlugin::ProcessEvent( int Event, void * /*Param*/ )
         PanelRedrawInfo pri = { i, pinfo.TopPanelItem };
         StartupInfo.Control( this, FCTL_REDRAWPANEL, &pri );
     }
-
+    */
     return FALSE;
 }
 
+/* !!! Review and uncomment
 //==========================================================================>>
 // We have to override the processing of Ctrl+Enter and Ctrl+Insert keys
 // because of the full pathnames in our PluginPanelItem structures
 //==========================================================================>>
 
-int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
+intptr_t VcsPlugin::ProcessPanelInput(ProcessPanelInputInfo *pinfo)
 {
     if ( Key & PKF_PREPROCESS )
         return FALSE;
@@ -899,107 +936,107 @@ int VcsPlugin::ProcessKey( int Key, unsigned int ControlState )
 
     return FALSE;
 }
-
-//==========================================================================>>
-// Directory monitoring thread routine. Starts the VCS plugin panel as soon
-// as we enter a VCS-controlled directory
-//==========================================================================>>
-
-Thread VcsPlugin::MonitoringThread( VcsPlugin::MonitoringThreadRoutine );
-
-unsigned int VcsPlugin::MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTerminateEvent )
-{
-    if ( pStartupInfo == 0 )
-        return 0;
-
-    static PluginStartupInfo I;
-    I = *static_cast<PluginStartupInfo*>( pStartupInfo ); // Note assignment, not initialization
-
-    static vector<unsigned short> CharBuf( nMaxConsoleWidth * nMaxConsoleHeight ); // Character buffer used to scan the console screen
-
-    HANDLE ObjectsToWait[] = { hTerminateEvent }; // WaitForMultipleObjects is used to avoid message processing problems -- see MSDN
-
-    for ( ; ; )
-    {
-        if ( ::WaitForMultipleObjects( array_size(ObjectsToWait), ObjectsToWait, false, 200 ) != WAIT_TIMEOUT ) // Thread termination requested or something unexpected happened
-            return 0; // Exit the thread
-
-        if ( !::Settings.bAutomaticMode )
-            continue;
-
-        PanelInfo pi;
-        StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_GETPANELSHORTINFO, &pi );
-
-        if ( pi.PanelType != PTYPE_FILEPANEL || pi.Plugin || !IsVcsDir( pi.CurDir ) )
-            continue;
-
-        // Dirty hack to check that no information/menu/dialog is active
-
-        HANDLE hConsoleOutput = ::GetStdHandle( STD_OUTPUT_HANDLE );
-
-        if ( !hConsoleOutput )
-            continue;
-
-        CONSOLE_SCREEN_BUFFER_INFO screenBufInfo;
-        if ( !::GetConsoleScreenBufferInfo( hConsoleOutput, &screenBufInfo ) )
-            continue;
-
-        unsigned long dwScreenBufSize = screenBufInfo.dwSize.X * screenBufInfo.dwSize.Y;
-        if ( dwScreenBufSize == 0 || dwScreenBufSize > CharBuf.capacity() )
-            continue;
-
-        COORD c = { 0, 0 };
-        unsigned long dwRead;
-        if ( !::ReadConsoleOutputCharacterW( hConsoleOutput, (LPWSTR)&CharBuf[0], dwScreenBufSize, c, &dwRead ) || dwRead != dwScreenBufSize )
-            continue;
-
-        // It only makes sense to start the plugin if there are file panels (at least one) currently displayed.
-        // We detect file panels by box drawing characters in the first and the second rows of the screen.
-
-        unsigned short * const cpFirstRowBegin  = &CharBuf[0];
-        unsigned short * const cpFirstRowEnd    = cpFirstRowBegin + screenBufInfo.dwSize.X;
-        unsigned short * const cpSecondRowBegin = cpFirstRowEnd;
-        unsigned short * const cpScreenEnd      = cpFirstRowBegin + dwScreenBufSize;
-
-        unsigned short *pTopLeftCorner1 = *cpFirstRowBegin == 0x2554 || *cpFirstRowBegin == L'[' /*Bg window number*/ ? cpFirstRowBegin : cpFirstRowEnd;
-        unsigned short *pTopLeftCorner2 = find( cpFirstRowBegin+1, cpFirstRowEnd, 0x2554 );
-
-        unsigned short *pTopRightCorner1 = find( cpFirstRowBegin+1, pTopLeftCorner2, 0x2557 );
-        unsigned short *pTopRightCorner2 = cpFirstRowEnd[-1] == 0x2557 || iswdigit(cpFirstRowEnd[-1]) /*Clock*/ ? cpFirstRowEnd-1 : cpFirstRowEnd;
-
-        bool bFilePanelsDetected =
-            pTopLeftCorner1 < cpFirstRowEnd && pTopRightCorner1 < cpFirstRowEnd &&
-            cpSecondRowBegin[pTopLeftCorner1-cpFirstRowBegin] == 0x2551 && cpSecondRowBegin[pTopRightCorner1-cpFirstRowBegin] == 0x2551 ||
-
-            pTopLeftCorner2 < cpFirstRowEnd && pTopRightCorner2 < cpFirstRowEnd &&
-            cpSecondRowBegin[pTopLeftCorner2-cpFirstRowBegin] == 0x2551 && cpSecondRowBegin[pTopRightCorner2-cpFirstRowBegin] == 0x2551;
-
-        if ( !bFilePanelsDetected )
-            continue;
-
-        // A top-left box drawing character anywhere below the first row means a menu or dialog is currently active
-
-        if ( find( cpSecondRowBegin, cpScreenEnd, 0x2554 ) < cpScreenEnd )
-            continue;
-
-        // Auto-starting the VCS panel (feasible only if a hotkey for the plugin is defined)
-
-        unsigned char cPluginHotkey = GetPluginHotkey( cszDllName );
-
-        if ( cPluginHotkey == 0 )
-            continue;
-
-        HANDLE hConsoleInput = ::GetStdHandle( STD_INPUT_HANDLE );
-
-        if ( !hConsoleInput )
-            continue;
-
-        INPUT_RECORD recs[] = { { KEY_EVENT, { TRUE,  1,        VK_F11, 0,             0, 0 } },
-                                { KEY_EVENT, { FALSE, 1,        VK_F11, 0,             0, 0 } },
-                                { KEY_EVENT, { TRUE,  1, cPluginHotkey, 0, cPluginHotkey, 0 } },
-                                { KEY_EVENT, { FALSE, 1, cPluginHotkey, 0, cPluginHotkey, 0 } } };
-        DWORD dwWritten;
-        ::WriteConsoleInput( hConsoleInput, recs, array_size(recs), &dwWritten );
-    }
-}
-
+*/
+//// !!! Review and uncomment
+////==========================================================================>>
+//// Directory monitoring thread routine. Starts the VCS plugin panel as soon
+//// as we enter a VCS-controlled directory
+////==========================================================================>>
+//
+//Thread VcsPlugin::MonitoringThread( VcsPlugin::MonitoringThreadRoutine );
+//
+//unsigned int VcsPlugin::MonitoringThreadRoutine( void *pStartupInfo, HANDLE hTerminateEvent )
+//{
+//    if ( pStartupInfo == 0 )
+//        return 0;
+//
+//    static PluginStartupInfo I;
+//    I = *static_cast<PluginStartupInfo*>( pStartupInfo ); // Note assignment, not initialization
+//
+//    static vector<unsigned short> CharBuf( nMaxConsoleWidth * nMaxConsoleHeight ); // Character buffer used to scan the console screen
+//
+//    HANDLE ObjectsToWait[] = { hTerminateEvent }; // WaitForMultipleObjects is used to avoid message processing problems -- see MSDN
+//
+//    for ( ; ; )
+//    {
+//        if ( ::WaitForMultipleObjects( array_size(ObjectsToWait), ObjectsToWait, false, 200 ) != WAIT_TIMEOUT ) // Thread termination requested or something unexpected happened
+//            return 0; // Exit the thread
+//
+//        if ( !::Settings.bAutomaticMode )
+//            continue;
+//
+//        PanelInfo pi;
+//        StartupInfo.Control( INVALID_HANDLE_VALUE, FCTL_GETPANELSHORTINFO, &pi );
+//
+//        if ( pi.PanelType != PTYPE_FILEPANEL || pi.Plugin || !IsVcsDir( pi.CurDir ) )
+//            continue;
+//
+//        // Dirty hack to check that no information/menu/dialog is active
+//
+//        HANDLE hConsoleOutput = ::GetStdHandle( STD_OUTPUT_HANDLE );
+//
+//        if ( !hConsoleOutput )
+//            continue;
+//
+//        CONSOLE_SCREEN_BUFFER_INFO screenBufInfo;
+//        if ( !::GetConsoleScreenBufferInfo( hConsoleOutput, &screenBufInfo ) )
+//            continue;
+//
+//        unsigned long dwScreenBufSize = screenBufInfo.dwSize.X * screenBufInfo.dwSize.Y;
+//        if ( dwScreenBufSize == 0 || dwScreenBufSize > CharBuf.capacity() )
+//            continue;
+//
+//        COORD c = { 0, 0 };
+//        unsigned long dwRead;
+//        if ( !::ReadConsoleOutputCharacterW( hConsoleOutput, (LPWSTR)&CharBuf[0], dwScreenBufSize, c, &dwRead ) || dwRead != dwScreenBufSize )
+//            continue;
+//
+//        // It only makes sense to start the plugin if there are file panels (at least one) currently displayed.
+//        // We detect file panels by box drawing characters in the first and the second rows of the screen.
+//
+//        unsigned short * const cpFirstRowBegin  = &CharBuf[0];
+//        unsigned short * const cpFirstRowEnd    = cpFirstRowBegin + screenBufInfo.dwSize.X;
+//        unsigned short * const cpSecondRowBegin = cpFirstRowEnd;
+//        unsigned short * const cpScreenEnd      = cpFirstRowBegin + dwScreenBufSize;
+//
+//        unsigned short *pTopLeftCorner1 = *cpFirstRowBegin == 0x2554 || *cpFirstRowBegin == L'[' /*Bg window number*/ ? cpFirstRowBegin : cpFirstRowEnd;
+//        unsigned short *pTopLeftCorner2 = find( cpFirstRowBegin+1, cpFirstRowEnd, 0x2554 );
+//
+//        unsigned short *pTopRightCorner1 = find( cpFirstRowBegin+1, pTopLeftCorner2, 0x2557 );
+//        unsigned short *pTopRightCorner2 = cpFirstRowEnd[-1] == 0x2557 || iswdigit(cpFirstRowEnd[-1]) /*Clock*/ ? cpFirstRowEnd-1 : cpFirstRowEnd;
+//
+//        bool bFilePanelsDetected =
+//            pTopLeftCorner1 < cpFirstRowEnd && pTopRightCorner1 < cpFirstRowEnd &&
+//            cpSecondRowBegin[pTopLeftCorner1-cpFirstRowBegin] == 0x2551 && cpSecondRowBegin[pTopRightCorner1-cpFirstRowBegin] == 0x2551 ||
+//
+//            pTopLeftCorner2 < cpFirstRowEnd && pTopRightCorner2 < cpFirstRowEnd &&
+//            cpSecondRowBegin[pTopLeftCorner2-cpFirstRowBegin] == 0x2551 && cpSecondRowBegin[pTopRightCorner2-cpFirstRowBegin] == 0x2551;
+//
+//        if ( !bFilePanelsDetected )
+//            continue;
+//
+//        // A top-left box drawing character anywhere below the first row means a menu or dialog is currently active
+//
+//        if ( find( cpSecondRowBegin, cpScreenEnd, 0x2554 ) < cpScreenEnd )
+//            continue;
+//
+//        // Auto-starting the VCS panel (feasible only if a hotkey for the plugin is defined)
+//
+//        unsigned char cPluginHotkey = GetPluginHotkey( cszDllName );
+//
+//        if ( cPluginHotkey == 0 )
+//            continue;
+//
+//        HANDLE hConsoleInput = ::GetStdHandle( STD_INPUT_HANDLE );
+//
+//        if ( !hConsoleInput )
+//            continue;
+//
+//        INPUT_RECORD recs[] = { { KEY_EVENT, { TRUE,  1,        VK_F11, 0,             0, 0 } },
+//                                { KEY_EVENT, { FALSE, 1,        VK_F11, 0,             0, 0 } },
+//                                { KEY_EVENT, { TRUE,  1, cPluginHotkey, 0, cPluginHotkey, 0 } },
+//                                { KEY_EVENT, { FALSE, 1, cPluginHotkey, 0, cPluginHotkey, 0 } } };
+//        DWORD dwWritten;
+//        ::WriteConsoleInput( hConsoleInput, recs, array_size(recs), &dwWritten );
+//    }
+//}

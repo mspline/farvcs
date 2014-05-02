@@ -1,10 +1,6 @@
 /*****************************************************************************
- File name:  plugutil.cpp
  Project:    FarVCS plugin
  Purpose:    Far plugin utilities not specific to FarVCS plugin
- Compiler:   MS Visual C++ 8.0
- Authors:    Michael Steinhause
- Dependencies: STL
 *****************************************************************************/
 
 #include <strstream>
@@ -17,50 +13,49 @@
 
 using namespace std;
 
-//==========================================================================>>
-// Primitive lng-file parser into the vector of strings. The file must reside
-// in the '1 FARLANG' resource
-//==========================================================================>>
-
-void ParseLngResource( vector<string>& vsMsgs )
+/// <summary>
+/// Primitive parsing of the contents of an .lng-file into a vector of strings.
+/// The contents is read from the '1 FARLANG' resource.
+/// </summary>
+vector<std::string> ParseLngResource()
 {
-    vsMsgs.clear();
+    vector<std::string> vsMsgs;
 
     // Get the FARLANG resource
 
-    HRSRC hLangRes = ::FindResource( hResInst, MAKEINTRESOURCE(1), "FARLANG" );
+    HRSRC hLangRes = ::FindResource(hResInst, MAKEINTRESOURCE(1), "FARLANG");
 
-    if ( hLangRes == 0 )
-        return;
+    if (hLangRes == 0)
+        return vsMsg;
 
-    HGLOBAL hGlobal = ::LoadResource( hResInst, hLangRes );
-    if ( hGlobal == 0 )
-        return;
+    HGLOBAL hGlobal = ::LoadResource(hResInst, hLangRes);
+    if (hGlobal == 0)
+        return vsMsg;
 
-    const char *pLangRes = (const char*)::LockResource( hGlobal );
-    if ( pLangRes == 0 )
-        return;
+    const char *pLangRes = (const char*)::LockResource(hGlobal);
+    if (pLangRes == nullptr)
+        return vsMsg;
 
-    unsigned long dwSize = ::SizeofResource( hResInst, hLangRes );
-    if ( dwSize == 0 )
-        return;
+    unsigned long dwSize = ::SizeofResource(hResInst, hLangRes);
+    if (dwSize == 0)
+        return vsMsg;
 
-    istrstream istr( pLangRes, dwSize );
+    istrstream istr(pLangRes, dwSize);
 
     char buf[4096];
 
-    while ( istr )
+    while (istr)
     {
         // Get the next line
 
-        istr.getline( buf, sizeof buf );
-        if ( !istr )
+        istr.getline(buf, sizeof buf);
+        if (!istr)
             break;
-        buf[sizeof buf-1] = '\0';
+        buf[_countof(buf) - 1] = '\0';
 
         // Ignore the line if it doesn't start with quote
 
-        if ( buf[0] != '"' )
+        if (buf[0] != '"')
             continue;
 
         // Get rid of the trailing quote followed by CRLFs
@@ -97,35 +92,36 @@ void ParseLngResource( vector<string>& vsMsgs )
         vsMsgs.push_back( s );
     }
 
-    return;
+    return vsMsgs;
 }
 
-//==========================================================================>>
-// Wrapper around FAR's GetMsg function. Not only is it meant to simplify
-// the function call, but also incredibly increases robustness: we survive
-// absence of the lng-file
-// ACHTUNG! The messages in the lng-file must have contiguous zero-based
-// numbering.
-//==========================================================================>>
-
-const char *GetMsg( int nMsgId )
+/// <summary>
+/// Wrapper around FAR's GetMsg function. Simplifies the call
+/// and improves robustness: we survive absence of the lng-file.
+/// </summary>
+/// <remarks>
+/// WARNING! The messages in the lng-file must have contiguous zero-based
+/// numbering.
+/// </remarks>
+const TCHAR *GetMsg(unsigned ing nMsgId)
 {
-    const char *szLngMsg = StartupInfo.GetMsg( StartupInfo.ModuleNumber, nMsgId );
-    if ( *szLngMsg != '\0' )
+    const TCHAR *szLngMsg = StartupInfo.GetMsg(StartupInfo.ModuleNumber, nMsgId);
+    if (*szLngMsg != _T('\0'))
         return szLngMsg;
 
-    // If there message cannot be read from the lng-file, try and extract it
+    // If a message cannot be read from the lng-file, try and extract it
     // from the backup lng file in the resources
 
-    static vector<string> vsMsgs;
-    static bool bLngResourceParsed = false; // Empty vector might also mean unsuccessful parsing, so we have to use a separate flag
+    static vector<tstring> vsMsgs;
+    static bool bInitialized = false; // Empty vector might also mean unsuccessful parsing, so we have to use a separate flag
 
-    if ( !bLngResourceParsed ) {
-        ParseLngResource( vsMsgs );
-        bLngResourceParsed = true;
+    if (!bInitialized)
+    {
+        vsMsgs = ParseLngResource();
+        bInitialized = true;
     }
 
-    return nMsgId < (int)vsMsgs.size() ? vsMsgs[nMsgId].c_str() : szLngMsg;
+    return nMsgId < vsMsgs.size() ? vsMsgs[nMsgId].c_str() : szLngMsg;
 }
 
 //==========================================================================>>

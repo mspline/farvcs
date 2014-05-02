@@ -1,23 +1,24 @@
-#ifndef __PLUGUTIL_H
-#define __PLUGUTIL_H
+#pragma once
 
+#include <stdio.h>
+#include <tchar.h>
 #include <string>
 #include <vector>
-#include "plugin.hpp"
-
-// These are the backreferences that must be defined in the main plugin module
+#include "winhelpers.h"
+#include "farsdk/plugin.hpp"
 
 extern HINSTANCE hInstance;
-extern HINSTANCE hResInst;             // Where to load the resources from. May differ from hInstance for second-level plugins
+extern HINSTANCE hResInst;             // Where to load the resources from. May differ from hInstance for second-level plugins.
 extern PluginStartupInfo StartupInfo;
 extern FarStandardFunctions FSF;
 
-extern const char *cszPluginName;
+const extern TCHAR *cszPluginName;
+const extern GUID PluginGuid;
 
 // Utility functions
 
-unsigned char GetPluginHotkey( const char *szDllName );
-const char *GetMsg( int nMsgId );
+unsigned char GetPluginHotkey(const TCHAR *szDllName);
+const TCHAR *GetMsg(int nMsgId);
 
 // Dialogs preparation
 
@@ -32,60 +33,58 @@ struct InitDialogItem
     char *Data;
 };
 
-void InitDialogItems( const InitDialogItem *pInitItems, FarDialogItem *pItems, int nItems );
+void InitDialogItems(const InitDialogItem *pInitItems, FarDialogItem *pItems, size_t nItems);
 
-// Check if Esc is pressed in the console
+// Checks if Esc is pressed in the console
 
 bool CheckForEsc();
         
-// Execute an external console application
+// Executes an external console application
 
-DWORD Execute( const char *szCurDir, const char *szCmdLine, bool bHideOutput, bool bSilent, bool bShowTitle, bool bBackground, const char *szOutputFile = 0 );
-HANDLE ExecuteConsoleNoWait( const char *szCurDir, const char *szCmdLine, HANDLE hOutPipe, HANDLE hErrPipe );
+DWORD Execute(const TCHAR *szCurDir, const TCHAR *szCmdLine, bool bHideOutput, bool bSilent, bool bShowTitle, bool bBackground, const char *szOutputFile = 0);
+HANDLE ExecuteConsoleNoWait(const TCHAR *szCurDir, const TCHAR *szCmdLine, HANDLE hOutPipe, HANDLE hErrPipe);
 
-const unsigned int nMaxConsoleWidth  = 300;
-const unsigned int nMaxConsoleHeight = 150;
+const unsigned int nMaxConsoleWidth  = 1000; // Should be enough for the smallest font on 4K screen
+const unsigned int nMaxConsoleHeight = 500;
 
-//==========================================================================>>
-// Wrapper around the StartupInfo::Message function
-//==========================================================================>>
-
-inline void MsgBoxWarning( const char *szTitle, const char *szFormat, ... )
+/// <summary>
+/// Wrapper around the <c>StartupInfo::Message</c> function.
+/// </summary>
+inline void MsgBoxWarning(const TCHAR *szTitle, const TCHAR *szFormat, ...)
 {
     va_list args;
-    char szBuf[4096];
+    TCHAR szBuf[2048];
 
-    array_strcpy( szBuf, szTitle );
-    if ( strlen(szBuf) < sizeof szBuf - 2 )
-        strcat( szBuf, "\n" );
+    _tcsncpy_s(szBuf, szTitle, _TRUNCATE);
+    _tcsncat_s(szBuf, _T("\n"), _TRUNCATE);
 
-    va_start( args, szFormat );
-    _vsnprintf( szBuf+strlen(szBuf), array_size(szBuf)-strlen(szBuf)-1, szFormat, args );
-    szBuf[sizeof szBuf-1] = 0;
+    va_start(args, szFormat);
+    _vsntprintf_s(szBuf + _tcslen(szBuf), _countof(szBuf) - _tcslen(szBuf), _TRUNCATE, szFormat, args);
 
-    StartupInfo.Message( StartupInfo.ModuleNumber,
-                         FMSG_WARNING | FMSG_ALLINONE | FMSG_MB_OK,
-                         0,   // Help topic
-                         (const char * const *)szBuf,
-                         0,   // Items number
-                         0 ); // Buttons number
+    StartupInfo.Message(&PluginGuid,
+                        &PluginGuid,                                    // !!! Must be replaced with unique message id
+                        FMSG_WARNING | FMSG_ALLINONE | FMSG_MB_OK,
+                        0,                                              // Help topic - a dummy value
+                        reinterpret_cast<const TCHAR * const *>(szBuf), // Items - Cast required because of FMSG_ALLINONE
+                        0,                                              // ItemsNumber - ignored because of FMSG_ALLINONE
+                        0);                                             // ButtonsNumber - ignored because of FMSG_MB_*
 }
 
-//==========================================================================>>
-// Getting FAR window size
-//==========================================================================>>
-
+/// <summary>
+/// Get the size of the Far's console window.
+/// </summary>
+/// <returns>Console size if succeessful; otherwise, <c>{0, 0}</c>.</returns>
 inline COORD GetConsoleSize()
 {
     COORD coord = { 0, 0 };
 
-    HANDLE hConsoleOutput = ::GetStdHandle( STD_OUTPUT_HANDLE );
+    HANDLE hConsoleOutput = ::GetStdHandle(STD_OUTPUT_HANDLE);
 
-    if ( !hConsoleOutput )
+    if (!hConsoleOutput)
         return coord;
 
     CONSOLE_SCREEN_BUFFER_INFO screenBufInfo;
-    if ( !::GetConsoleScreenBufferInfo( hConsoleOutput, &screenBufInfo ) )
+    if (!::GetConsoleScreenBufferInfo( hConsoleOutput, &screenBufInfo))
         return coord;
 
     coord.X = screenBufInfo.dwSize.X;
@@ -93,5 +92,3 @@ inline COORD GetConsoleSize()
 
     return coord;
 }
-
-#endif // __PLUGUTIL_H
